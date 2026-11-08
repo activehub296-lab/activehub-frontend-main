@@ -1,0 +1,1211 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import AlumnoNav from "../../components/AlumnoNav";
+import StatusBadge from "../../components/StatusBadge";
+import LeafletMap from "../../components/LeafletMap";
+import Avatar from "../../components/Avatar";
+import GaleriaActividad from "../../components/GaleriaActividad";
+import ErrorReintentar from "../../components/ErrorReintentar";
+import { CargandoSeccion } from "../../components/Cargando";
+import { s } from "../../lib/style";
+import { useAuth } from "../../context/AuthContext";
+import { useData } from "../../context/DataContext";
+import type { InformeActividad, MiInscripcion, ReseniaActividad } from "../../context/DataContext";
+import { esIaNoDisponible, esSinCuota } from "../../lib/ia";
+import { ORDENES_OPINIONES, opinionesVisibles } from "../../lib/opiniones";
+import type { OrdenOpiniones } from "../../lib/opiniones";
+import { ApiError } from "../../lib/api";
+import { fotosDeActividad } from "../../lib/galeria";
+import { diasHastaClase, disponibilidad, formatFecha, formatHora, tipoIngreso } from "../../lib/mockData";
+import { formatDistanciaKm, haversineKm, useGeolocation } from "../../lib/geo";
+import ActivarUbicacion from "../../components/ActivarUbicacion";
+import type { Actividad, Clase } from "../../lib/types";
+
+// Beneficios y prevenciones de respaldo, para cuando la IA no está disponible (sin credenciales
+// de Groq, proveedor caído, backend apagado). El informe real lo escribe el modelo cruzando la
+// actividad con el perfil del alumno — ver `generarInformeActividad` del DataContext y
+// `GenerarInformeActividadService` del backend. Estos textos son lo que la pantalla mostraba antes
+// de que existiera el modelo y siguen siendo el piso: es mejor dar información genérica correcta
+// que dejar la tarjeta vacía porque un servicio externo no respondió.
+//
+// Keyed por NOMBRE de nivel, no por un tipo cerrado: desde E4Ad-HU05 el admin puede crear
+// niveles nuevos, y para esos no hay copy escrito — se usan los textos genéricos de abajo.
+const BENEFICIOS_POR_NIVEL: Record<string, string[]> = {
+  "Física baja": [
+    "Bajo impacto articular: apta si estás retomando la actividad física.",
+    "Ayuda a reducir el estrés y mejorar la calidad del descanso.",
+    "Favorece la conexión entre respiración y movimiento.",
+  ],
+  "Física media": [
+    "Mejora la resistencia cardiovascular de forma progresiva.",
+    "Tonifica sin generar demasiada carga articular.",
+    "Buen punto de partida para subir el nivel de exigencia con el tiempo.",
+  ],
+  "Física alta": [
+    "Alto gasto calórico y mejora notable de la capacidad aeróbica.",
+    "Fortalece el sistema cardiovascular y la resistencia muscular.",
+    "Ideal si ya tenés una base de entrenamiento previa.",
+  ],
+};
+
+const PREVENCIONES_POR_NIVEL: Record<string, string[]> = {
+  "Física baja": [
+    "Consultá a un profesional si tenés una lesión o cirugía reciente.",
+    "Avisá al instructor si sentís mareos o molestias durante la sesión.",
+  ],
+  "Física media": [
+    "Hidratate antes, durante y después de la actividad.",
+    "Usá calzado y ropa adecuados para reducir el riesgo de lesiones.",
+  ],
+  "Física alta": [
+    "Si tenés antecedentes cardíacos, consultá a un médico antes de empezar.",
+    "Respetá los tiempos de entrada en calor y elongación al finalizar.",
+    "Frená la actividad ante dolor agudo o falta de aire excesiva.",
+  ],
+};
+
+const BENEFICIOS_GENERICOS = [
+  "Mejora el estado físico general y la sensación de bienestar.",
+  "Se practica en grupo, con acompañamiento del instructor.",
+];
+
+const PREVENCIONES_GENERICAS = [
+  "Hidratate antes, durante y después de la actividad.",
+  "Avisá al instructor si sentís alguna molestia durante la sesión.",
+];
+
+const chipOpinion = (on: boolean) =>
+  s(
+    `cursor:pointer;padding:6px 12px;border-radius:99px;font:700 12.5px Manrope,sans-serif;display:inline-flex;align-items:center;gap:4px;background:${on ? "#0E2A47" : "#F2F5F9"};color:${on ? "#fff" : "#41566B"};border:1px solid ${on ? "#0E2A47" : "#E2E9F0"};`,
+  );
+
+/** `error` es "no se pudo, y no es que falte la IA": el límite de consultas o un 4xx. */
+type AiState = "idle" | "loading" | "generated" | "error";
+
+export default function AlumnoDetalle() {
+  const { id } = useParams<{ id: string }>();
+  const { currentUser } = useAuth();
+  const {
+    actividades,
+    clases,
+    listarMisFavoritos,
+    agregarFavorito,
+    quitarFavorito,
+    getTipoActividad,
+    getCategoria,
+    instructorNombre,
+    cargarDetalleActividad,
+    listarMisInscripciones,
+    listarResenasActividad,
+    cargandoCatalogo,
+    registrarInteraccion,
+    generarInformeActividad,
+  } = useData();
+
+  const actividad = actividades.find((a) => a.id === id);
+
+  const [selectedClaseId, setSelectedClaseId] = useState<string | null>(null);
+  /** Imagen de la galería que se está viendo. Null = portada. */
+  const [aiState, setAiState] = useState<AiState>("idle");
+  const [aiActualizado, setAiActualizado] = useState(false);
+  const [aiFecha, setAiFecha] = useState<string>("");
+  /** El informe del modelo. Null con `aiState === "generated"` = se cayó a los textos por nivel. */
+  const [informe, setInforme] = useState<InformeActividad | null>(null);
+  const [aiError, setAiError] = useState("");
+  /**
+   * Por qué el informe es el general y no el personalizado. Vacío = la IA simplemente no estaba;
+   * con texto = el mensaje del backend, que dice cuánto falta para que la cuota se recupere.
+   */
+  const [aiAviso, setAiAviso] = useState("");
+  const [misInscripciones, setMisInscripciones] = useState<MiInscripcion[]>([]);
+  const [reviewsActividad, setReviewsActividad] = useState<ReseniaActividad[]>([]);
+  /** Filtro de la lista de opiniones: null = todas las calificaciones. */
+  const [estrellasSel, setEstrellasSel] = useState<number | null>(null);
+  const [ordenOpiniones, setOrdenOpiniones] = useState<OrdenOpiniones>("Más recientes");
+  const listaOpinionesRef = useRef<HTMLDivElement>(null);
+  const [misFavoritos, setMisFavoritos] = useState<string[]>([]);
+  const [errorDetalle, setErrorDetalle] = useState(false);
+  // Tercer estado, además de "está" y "falló": todavía no llegó. Sin esto la pantalla decía
+  // "Actividad no encontrada" durante el viaje de ida de la consulta.
+  const [cargandoDetalle, setCargandoDetalle] = useState(true);
+  const [cargandoResenas, setCargandoResenas] = useState(true);
+
+  // Se distingue "no existe" de "no pudimos cargarla": con el backend caído la pantalla
+  // decía "Actividad no encontrada", que es una afirmación falsa y sin salida.
+  const cargarDetalle = useCallback(() => {
+    if (!id) return;
+    cargarDetalleActividad(id)
+      .then(() => setErrorDetalle(false))
+      .catch(() => setErrorDetalle(true))
+      .finally(() => setCargandoDetalle(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  useEffect(() => {
+    cargarDetalle();
+  }, [cargarDetalle]);
+
+  useEffect(() => {
+    if (currentUser) listarMisFavoritos().then(setMisFavoritos).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  /**
+   * Abrir el detalle es una señal de interés y alimenta las recomendaciones (V27 del backend).
+   *
+   * Sólo con sesión: es una señal **de alguien**, y esta pantalla también la ve el público.
+   * El backend deduplica la misma vista dentro de diez minutos, así que volver atrás y entrar
+   * de nuevo no convierte esta actividad en el gusto dominante del alumno.
+   */
+  useEffect(() => {
+    if (!id || !currentUser) return;
+    void registrarInteraccion("VISTA_ACTIVIDAD", { actividadId: id });
+  }, [id, currentUser, registrarInteraccion]);
+
+  useEffect(() => {
+    if (currentUser) listarMisInscripciones().then(setMisInscripciones).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, id]);
+
+  useEffect(() => {
+    if (id) listarResenasActividad(id).then(setReviewsActividad).catch(() => {}).finally(() => setCargandoResenas(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  const clasesActividad = useMemo(
+    () =>
+      clases
+        .filter((c) => c.actividadId === id && c.estado !== "Cancelada" && c.estado !== "Finalizada")
+        .sort((x, y) => x.fechaHora.localeCompare(y.fechaHora)),
+    [clases, id],
+  );
+
+  const selectedClase: Clase | undefined =
+    clasesActividad.find((c) => c.id === selectedClaseId) ?? clasesActividad[0];
+
+  if (!actividad) {
+    return (
+      <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
+        <AlumnoNav active="explorar" />
+        <div style={s("max-width:640px;margin:0 auto;padding:80px 28px;text-align:center;")}>
+          {cargandoCatalogo || cargandoDetalle ? (
+            <CargandoSeccion seccion="la actividad" />
+          ) : errorDetalle ? (
+            <ErrorReintentar
+              mensaje="No pudimos cargar esta actividad. Puede ser un problema de conexión."
+              onReintentar={cargarDetalle}
+            />
+          ) : (
+            <>
+              <h1 style={s("font:700 24px Space Grotesk,sans-serif;color:#0E2A47;")}>Actividad no encontrada</h1>
+              <p style={s("color:#65788C;margin:10px 0 20px;")}>La actividad que buscás no existe o fue eliminada.</p>
+              <Link to="/alumno/explorar" className="ah-link" style={s("color:#FF6A2B;font-weight:700;")}>
+                Volver a explorar
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const tipo = getTipoActividad(actividad.tipoActividadId);
+  const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
+  const instructorNombreCompleto = instructorNombre[actividad.instructorId];
+
+  const intereses = currentUser?.perfilAlumno?.intereses ?? [];
+
+  /**
+   * Pide el informe al backend, que lo genera con el modelo de lenguaje cruzando esta actividad con
+   * el perfil del alumno. La clase seleccionada viaja para que el informe pueda hablar de esa fecha
+   * y ese horario.
+   *
+   * <p><b>Si la IA no está disponible el informe igual se muestra</b>, armado con los textos por
+   * nivel de intensidad de arriba y con un aviso de que se generó sin IA. Es la misma degradación
+   * que el chatbot: un servicio externo caído no puede dejar una sección de la pantalla sin
+   * contenido. El límite de consultas (429) sí se muestra como error, porque ahí lo que corresponde
+   * es esperar y volver a intentar.
+   */
+  const pedirInforme = (esActualizacion: boolean) => {
+    if (!actividad) return;
+    setAiState("loading");
+    setAiError("");
+    generarInformeActividad(actividad.id, selectedClase?.id)
+      .then((r) => {
+        setInforme(r);
+        setAiAviso("");
+        setAiFecha(r.generadoEn);
+        setAiState("generated");
+        if (esActualizacion) setAiActualizado(true);
+      })
+      .catch((error: unknown) => {
+        // Sin IA y sin cuota terminan en el mismo lugar —el informe general— porque en los dos
+        // casos es lo mejor que se puede mostrar. Lo que cambia es el aviso: cuando es cuota, el
+        // backend ya escribió cuánto falta y ese texto se muestra tal cual (promete justamente
+        // "más abajo están los beneficios generales", que es lo que se está mostrando).
+        const sinCuota = esSinCuota(error) && error instanceof ApiError;
+        if (sinCuota || esIaNoDisponible(error)) {
+          setInforme(null);
+          setAiAviso(sinCuota ? (error as ApiError).message : "");
+          setAiFecha(new Date().toISOString());
+          setAiState("generated");
+          if (esActualizacion) setAiActualizado(true);
+          return;
+        }
+        setAiError("No pudimos generar el informe. Probá de nuevo en un momento.");
+        setAiState("error");
+      });
+  };
+
+  const generarInforme = () => pedirInforme(false);
+  const actualizarInforme = () => pedirInforme(true);
+
+  const ratingProm = reviewsActividad.length
+    ? reviewsActividad.reduce((sum, r) => sum + r.puntaje, 0) / reviewsActividad.length
+    : actividad.rating;
+  const opiniones = opinionesVisibles(reviewsActividad, estrellasSel, ordenOpiniones);
+  // Al cambiar un filtro, la lista vuelve a empezar desde arriba: si no, quedaba scrolleada a
+  // mitad de una lista distinta.
+  const alInicioDeLaLista = () => {
+    if (listaOpinionesRef.current) listaOpinionesRef.current.scrollTop = 0;
+  };
+  const ratingBars = [5, 4, 3, 2, 1].map((star) => {
+    const n = reviewsActividad.filter((r) => r.puntaje === star).length;
+    const pct = reviewsActividad.length ? Math.round((n / reviewsActividad.length) * 100) : 0;
+    return { star, n, pct };
+  });
+
+  const isFav = misFavoritos.includes(actividad.id);
+
+  const onToggleFav = async () => {
+    if (isFav) {
+      setMisFavoritos((prev) => prev.filter((a) => a !== actividad.id));
+      await quitarFavorito(actividad.id).catch(() => setMisFavoritos((prev) => [...prev, actividad.id]));
+    } else {
+      setMisFavoritos((prev) => [...prev, actividad.id]);
+      await agregarFavorito(actividad.id).catch(() => setMisFavoritos((prev) => prev.filter((a) => a !== actividad.id)));
+    }
+  };
+
+  return (
+    <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
+      <AlumnoNav active="explorar" />
+      <div style={s("max-width:1240px;margin:0 auto;padding:22px 28px 60px;")}>
+        <div style={s("font:600 13px Manrope,sans-serif;color:#7A8C9E;margin-bottom:18px;display:flex;align-items:center;gap:8px;")}>
+          <Link to="/alumno" className="ah-link" style={s("cursor:pointer;color:#7A8C9E;text-decoration:none;")}>
+            Inicio
+          </Link>
+          <span>/</span>
+          <Link to="/alumno/explorar" className="ah-link" style={s("cursor:pointer;color:#7A8C9E;text-decoration:none;")}>
+            {cat?.nombre ?? "Explorar"}
+          </Link>
+          <span>/</span>
+          <span style={s("color:#0E2A47;")}>{actividad.nombre}</span>
+        </div>
+
+        <div className="ah-grid-side" style={s("display:grid;grid-template-columns:1.55fr 1fr;gap:30px;align-items:start;")}>
+          {/* LEFT */}
+          <div>
+            <div
+              style={s(
+                "border-radius:22px;overflow:hidden;border:1px solid #E7EDF3;box-shadow:0 1px 2px rgba(14,42,71,.05);margin-bottom:14px;",
+              )}
+            >
+              {/* Portada + galería sin repetir, con flechas y miniaturas (2026-10-25). El `key`
+                  evita que la foto elegida de una actividad pase a otra. */}
+              <GaleriaActividad
+                key={actividad.id}
+                fotos={fotosDeActividad(actividad)}
+                nombre={actividad.nombre}
+                tinte={actividad.photoTint}
+                encima={<StatusBadge type={selectedClase ? disponibilidad(selectedClase).type : "disponible"} />}
+              />
+            </div>
+
+            <span
+              style={s(
+                "display:inline-block;font:700 12px Manrope,sans-serif;color:#12B5A5;text-transform:uppercase;letter-spacing:.5px;margin-bottom:9px;",
+              )}
+            >
+              {tipo?.nombre ?? ""} · {cat?.nombre ?? ""}
+            </span>
+            <h1 style={s("font:700 36px Space Grotesk,sans-serif;letter-spacing:-1px;margin:0 0 16px;line-height:1.08;")}>
+              {actividad.nombre}
+            </h1>
+            <div style={s("display:flex;flex-wrap:wrap;gap:22px;margin-bottom:30px;")}>
+              <div style={s("display:flex;align-items:center;gap:7px;font-size:14.5px;font-weight:700;color:#0E2A47;")}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#FFC53D" stroke="none">
+                  <path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z" />
+                </svg>
+                {ratingProm.toFixed(1)}{" "}
+                <span style={s("color:#9AAABA;font-weight:600;")}>({reviewsActividad.length} opiniones)</span>
+              </div>
+              <div style={s("display:flex;align-items:center;gap:7px;font-size:14.5px;font-weight:600;color:#41566B;")}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
+                  <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                {actividad.ubicacion}
+              </div>
+              <div style={s("display:flex;align-items:center;gap:7px;font-size:14.5px;font-weight:600;color:#41566B;")}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5l3 2" />
+                </svg>
+                {actividad.nivelIntensidad}
+              </div>
+              <div style={s("display:flex;align-items:center;gap:7px;font-size:14.5px;font-weight:600;color:#41566B;")}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2}>
+                  <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+                  <circle cx="12" cy="12" r="5" />
+                </svg>
+                {actividad.duracionMin} min
+              </div>
+            </div>
+
+            <div
+              style={s(
+                "display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:16px 18px;margin-bottom:30px;",
+              )}
+            >
+              <Avatar usuarioId={actividad.instructorId} nombre={instructorNombreCompleto ?? "?"} size={50} fontSize={19} />
+              <div>
+                <div style={s("font:700 16px Manrope,sans-serif;color:#0E2A47;")}>
+                  {instructorNombreCompleto ?? "Instructor"}
+                </div>
+                <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>Instructor</div>
+              </div>
+              {/* Lleva al perfil público del instructor. Antes era un botón sin acción. */}
+              <Link
+                to={`/alumno/instructor/${actividad.instructorId}`}
+                className="ah-btn"
+                style={s(
+                  "margin-left:auto;background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:10px 16px;font:700 13.5px Manrope,sans-serif;color:#0E2A47;cursor:pointer;text-decoration:none;",
+                )}
+              >
+                Ver perfil
+              </Link>
+            </div>
+
+            <h2 style={s("font:700 20px Space Grotesk,sans-serif;margin:0 0 12px;")}>Descripción</h2>
+            <p style={s("font-size:15.5px;line-height:1.7;color:#54697E;margin:0 0 30px;")}>{actividad.descripcion}</p>
+
+            <div
+              style={s(
+                "background:linear-gradient(135deg,#F3FBFA,#EEF7FF);border:1px solid #D6EDEA;border-radius:18px;padding:24px 26px;margin-bottom:30px;",
+              )}
+            >
+              <div style={s("display:flex;align-items:flex-start;gap:11px;margin-bottom:14px;")}>
+                <span
+                  style={s(
+                    "width:36px;height:36px;border-radius:10px;background:linear-gradient(140deg,#12B5A5,#3A6FF0);display:flex;align-items:center;justify-content:center;flex:none;",
+                  )}
+                >
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2}>
+                    <path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2z" />
+                  </svg>
+                </span>
+                <div style={s("flex:1;min-width:0;")}>
+                  <h2 style={s("font:700 19px Space Grotesk,sans-serif;margin:0;display:flex;align-items:center;gap:9px;flex-wrap:wrap;")}>
+                    Asistente de beneficios y prevenciones
+                    <span
+                      style={s(
+                        "font:700 11px Manrope,sans-serif;color:#0C8576;background:#D7F2ED;border:1px solid #BCE7DF;padding:3px 9px;border-radius:99px;",
+                      )}
+                    >
+                      IA
+                    </span>
+                  </h2>
+                  <p style={s("font-size:13px;color:#65788C;font-weight:600;margin:4px 0 0;line-height:1.45;")}>
+                    Cruza esta actividad (tipo, intensidad y objetivos) con tu perfil y arma un informe orientativo.
+                  </p>
+                </div>
+              </div>
+
+              <div style={s("display:flex;flex-wrap:wrap;gap:7px;margin-bottom:16px;")}>
+                {(intereses.length
+                  ? intereses.map((i) => i.nombre)
+                  : ["Sin intereses registrados en tu perfil"]
+                ).map((c) => (
+                  <span
+                    key={c}
+                    style={s(
+                      "font:700 11.5px Manrope,sans-serif;color:#41566B;background:#fff;border:1px solid #D9E6E3;border-radius:99px;padding:5px 11px;",
+                    )}
+                  >
+                    {c}
+                  </span>
+                ))}
+              </div>
+
+              {aiState === "idle" && (
+                <div style={s("background:#fff;border:1px dashed #C5DDD8;border-radius:14px;padding:26px 22px;text-align:center;")}>
+                  <p style={s("font-size:14px;color:#65788C;font-weight:600;line-height:1.5;margin:0 0 16px;max-width:440px;margin-inline:auto;")}>
+                    Todavía no generaste tu informe para esta actividad. Pedilo cuando quieras: la IA usará la versión actual de tu perfil.
+                  </p>
+                  <button
+                    className="ah-btn"
+                    onClick={generarInforme}
+                    style={s(
+                      "background:#0FB8A9;color:#fff;border:none;border-radius:12px;padding:13px 22px;font:700 14.5px Manrope,sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:9px;",
+                    )}
+                  >
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2}>
+                      <path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2z" />
+                    </svg>
+                    Generar beneficios y prevenciones
+                  </button>
+                </div>
+              )}
+
+              {aiState === "loading" && (
+                <div style={s("background:#fff;border:1px solid #D6EDEA;border-radius:14px;padding:30px 22px;text-align:center;")}>
+                  <span
+                    style={s(
+                      "display:inline-block;width:30px;height:30px;border:3px solid #D7F2ED;border-top-color:#0FB8A9;border-radius:99px;animation:ahspin 0.8s linear infinite;",
+                    )}
+                  />
+                  <p style={s("font-size:14px;color:#0C8576;font-weight:700;margin:14px 0 2px;")}>
+                    Analizando la actividad y tu perfil de salud…
+                  </p>
+                  <p style={s("font-size:12.5px;color:#9AAABA;font-weight:600;margin:0;")}>Consultando el modelo de IA</p>
+                </div>
+              )}
+
+              {aiState === "error" && (
+                <div style={s("background:#fff;border:1px solid #F3D7C4;border-radius:14px;padding:22px;text-align:center;")}>
+                  <p style={s("font-size:14px;color:#B9741A;font-weight:700;line-height:1.5;margin:0 0 14px;")}>
+                    {aiError}
+                  </p>
+                  <button
+                    className="ah-btn"
+                    onClick={generarInforme}
+                    style={s(
+                      "background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:10px 18px;font:700 13px Manrope,sans-serif;color:#0E2A47;cursor:pointer;",
+                    )}
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              )}
+
+              {aiState === "generated" && (
+                <div style={s("background:#fff;border:1px solid #D6EDEA;border-radius:14px;padding:20px 22px;")}>
+                  <div style={s("display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:16px;")}>
+                    <span style={s("font:600 12px Manrope,sans-serif;color:#7A8C9E;display:flex;align-items:center;gap:6px;")}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2}>
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 7v5l3 2" />
+                      </svg>
+                      Generado el {formatFecha(aiFecha)} · perfil de {currentUser?.nombre ?? "alumno"}
+                    </span>
+                    {aiActualizado && (
+                      <span
+                        style={s(
+                          "font:700 10.5px Manrope,sans-serif;color:#B9741A;background:#FFF3E0;border:1px solid #F6E2C0;padding:3px 9px;border-radius:99px;",
+                        )}
+                      >
+                        Informe actualizado
+                      </span>
+                    )}
+                    <button
+                      className="ah-btn"
+                      onClick={actualizarInforme}
+                      style={s(
+                        "margin-left:auto;background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:8px 14px;font:700 12.5px Manrope,sans-serif;color:#0E2A47;cursor:pointer;display:inline-flex;align-items:center;gap:7px;",
+                      )}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E2A47" strokeWidth={2.2}>
+                        <path d="M21 12a9 9 0 1 1-3-6.7" />
+                        <path d="M21 3v5h-5" />
+                      </svg>
+                      Actualizar informe
+                    </button>
+                  </div>
+
+                  {/* El resumen es lo que el alumno vino a leer: si esta actividad le va a gustar.
+                      Los beneficios y prevenciones de abajo son el detalle. */}
+                  {informe && (
+                    <div style={s("margin-bottom:18px;")}>
+                      <div style={s("display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:9px;")}>
+                        <span
+                          style={s(
+                            `font:700 11px Manrope,sans-serif;padding:4px 10px;border-radius:99px;${
+                              informe.afinidad === "Alta"
+                                ? "color:#0C8576;background:#D7F2ED;border:1px solid #BCE7DF;"
+                                : informe.afinidad === "Media"
+                                  ? "color:#5A6B7C;background:#EEF2F6;border:1px solid #DDE5EC;"
+                                  : "color:#B9741A;background:#FFF3E0;border:1px solid #F6E2C0;"
+                            }`,
+                          )}
+                        >
+                          Afinidad {informe.afinidad.toLowerCase()}
+                        </span>
+                        <span style={s("font:600 11.5px Manrope,sans-serif;color:#9AAABA;")}>
+                          según tus intereses y lo que ya hiciste en ActiveHub
+                        </span>
+                      </div>
+                      <p style={s("font-size:14.5px;line-height:1.6;color:#36506B;font-weight:600;margin:0;")}>
+                        {informe.resumen}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* La IA no estaba: el informe son los textos por nivel de intensidad. Se dice,
+                      porque el encabezado promete que usa el perfil del alumno y acá no lo usó. */}
+                  {!informe && (
+                    <div
+                      style={s(
+                        "display:flex;align-items:flex-start;gap:9px;margin-bottom:18px;padding:10px 12px;background:#FFF9F2;border:1px solid #F6E2C0;border-radius:10px;",
+                      )}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#B9741A" strokeWidth={2} style={s("flex:none;margin-top:1px;")}>
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 16v-4M12 8h.01" />
+                      </svg>
+                      <span style={s("font:600 12px Manrope,sans-serif;color:#8A6B44;line-height:1.5;")}>
+                        {aiAviso ? (
+                          <>
+                            {aiAviso} Por ahora este informe es general para el nivel{" "}
+                            <b>{actividad.nivelIntensidad}</b> y no considera tu perfil.
+                          </>
+                        ) : (
+                          <>
+                            El asistente de IA no está disponible en este momento, así que este informe
+                            es general para el nivel <b>{actividad.nivelIntensidad}</b> y no considera
+                            tu perfil. Probá <b>Actualizar informe</b> en un rato.
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="ah-grid-2" style={s("display:grid;grid-template-columns:1fr 1fr;gap:22px;")}>
+                    <div>
+                      <div
+                        style={s(
+                          "display:flex;align-items:center;gap:8px;margin-bottom:11px;font:700 13px Manrope,sans-serif;color:#0C8576;text-transform:uppercase;letter-spacing:.3px;",
+                        )}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2.4}>
+                          <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                        Beneficios para vos
+                      </div>
+                      <div style={s("display:flex;flex-direction:column;gap:11px;")}>
+                        {(informe?.beneficios.length ? informe.beneficios : BENEFICIOS_POR_NIVEL[actividad.nivelIntensidad] ?? BENEFICIOS_GENERICOS).map((b) => (
+                          <div key={b} style={s("display:flex;align-items:flex-start;gap:9px;font-size:13.5px;color:#36506B;font-weight:600;line-height:1.45;")}>
+                            <span style={s("width:7px;height:7px;border-radius:99px;background:#0FB8A9;flex:none;margin-top:6px;")} />
+                            {b}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div
+                        style={s(
+                          "display:flex;align-items:center;gap:8px;margin-bottom:11px;font:700 13px Manrope,sans-serif;color:#B9741A;text-transform:uppercase;letter-spacing:.3px;",
+                        )}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#B9741A" strokeWidth={2.2}>
+                          <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+                          <path d="M12 9v4M12 17h.01" />
+                        </svg>
+                        Prevenciones a considerar
+                      </div>
+                      <div style={s("display:flex;flex-direction:column;gap:11px;")}>
+                        {(informe?.prevenciones.length ? informe.prevenciones : PREVENCIONES_POR_NIVEL[actividad.nivelIntensidad] ?? PREVENCIONES_GENERICAS).map((p) => (
+                          <div key={p} style={s("display:flex;align-items:flex-start;gap:9px;font-size:13.5px;color:#36506B;font-weight:600;line-height:1.45;")}>
+                            <span style={s("width:7px;height:7px;border-radius:99px;background:#E2A03B;flex:none;margin-top:6px;")} />
+                            {p}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    style={s(
+                      "display:flex;align-items:center;gap:7px;margin-top:16px;padding:9px 12px;background:#F3FBFA;border:1px solid #D7EEEA;border-radius:10px;",
+                    )}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2} style={s("flex:none;")}>
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                      <path d="M17 21v-8H7v8M7 3v5h8" />
+                    </svg>
+                    <span style={s("font:600 11.5px Manrope,sans-serif;color:#5A7B76;line-height:1.4;")}>
+                      Informe guardado para esta sesión. Usá <b style={s("color:#0C8576;")}>Actualizar informe</b> para regenerarlo.
+                    </span>
+                  </div>
+                  <div style={s("display:flex;align-items:flex-start;gap:9px;margin-top:14px;padding-top:15px;border-top:1px solid #EEF2F6;")}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9AAABA" strokeWidth={2} style={s("flex:none;margin-top:1px;")}>
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 16v-4M12 8h.01" />
+                    </svg>
+                    <p style={s("font-size:11.5px;color:#8597A8;font-weight:600;line-height:1.5;margin:0;")}>
+                      Informe orientativo generado por IA. <b style={s("color:#65788C;")}>No es un diagnóstico médico</b> ni una indicación clínica, y{" "}
+                      <b style={s("color:#65788C;")}>no condiciona ni bloquea tu inscripción</b> a la actividad. Ante dudas, consultá a un profesional de la salud.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <h2 style={s("font:700 20px Space Grotesk,sans-serif;margin:0 0 6px;")}>Fechas y horarios disponibles</h2>
+            <p style={s("font-size:14px;color:#7A8C9E;margin:0 0 16px;")}>Elegí el día para ver el horario y los cupos.</p>
+            <div style={s("display:flex;gap:12px;margin-bottom:34px;flex-wrap:wrap;")}>
+              {clasesActividad.length === 0 && (
+                <span style={s("font-size:13.5px;color:#9AAABA;font-weight:600;")}>No hay clases programadas por el momento.</span>
+              )}
+              {clasesActividad.map((c) => {
+                const d = new Date(c.fechaHora);
+                const on = selectedClase?.id === c.id;
+                const disp = disponibilidad(c);
+                return (
+                  <div
+                    key={c.id}
+                    className="ah-btn"
+                    onClick={() => setSelectedClaseId(c.id)}
+                    style={s(
+                      `cursor:pointer;width:96px;background:${on ? "#EAFBF8" : "#fff"};border:1.5px solid ${on ? "#0FB8A9" : "#E7EDF3"};border-radius:14px;padding:14px 10px;text-align:center;`,
+                    )}
+                  >
+                    <div style={s("font:700 12px Manrope,sans-serif;color:#7A8C9E;text-transform:uppercase;")}>
+                      {d.toLocaleDateString("es-AR", { weekday: "short" })}
+                    </div>
+                    <div style={s("font:700 24px Space Grotesk,sans-serif;color:#0E2A47;margin:2px 0;")}>{d.getDate()}</div>
+                    <div style={s("font-size:12.5px;font-weight:700;color:#0C8576;")}>{formatHora(c.fechaHora)}</div>
+                    <div style={s(`font-size:10.5px;font-weight:700;margin-top:3px;color:${disp.type === "sincupos" ? "#BE3A3E" : "#9AAABA"};`)}>
+                      {disp.label}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <h2 style={s("font:700 20px Space Grotesk,sans-serif;margin:0 0 18px;")}>Opiniones de alumnos</h2>
+            {/*
+              Hasta que llegan, ni el promedio ni "Todavía no hay opiniones": las dos cosas son
+              afirmaciones sobre datos que todavía no tenemos, y la segunda es la que más
+              confunde — una actividad con reseñas se veía como una actividad sin ninguna.
+            */}
+            {cargandoResenas ? (
+              <div style={s("margin-bottom:34px;")}>
+                <CargandoSeccion seccion="comentarios" />
+              </div>
+            ) : (
+              <>
+            <div
+              className="ah-grid-side-alt"
+              style={s(
+                "display:grid;grid-template-columns:170px 1fr;gap:26px;background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px 24px;margin-bottom:18px;",
+              )}
+            >
+              <div style={s("text-align:center;border-right:1px solid #EEF2F6;padding-right:20px;")}>
+                <div style={s("font:700 46px Space Grotesk,sans-serif;color:#0E2A47;line-height:1;")}>{ratingProm.toFixed(1)}</div>
+                <div style={s("display:flex;gap:2px;justify-content:center;margin:8px 0 6px;")}>
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <svg key={i} width="15" height="15" viewBox="0 0 24 24" fill={i < Math.round(ratingProm) ? "#FFC53D" : "#E3E9EF"}>
+                      <path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z" />
+                    </svg>
+                  ))}
+                </div>
+                <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>{reviewsActividad.length} opiniones</div>
+              </div>
+              <div style={s("display:flex;flex-direction:column;justify-content:center;gap:7px;")}>
+                {ratingBars.map((rb) => (
+                  <div key={rb.star} style={s("display:flex;align-items:center;gap:10px;")}>
+                    <span style={s("font-size:12.5px;font-weight:700;color:#7A8C9E;width:10px;")}>{rb.star}</span>
+                    <div style={s("flex:1;height:7px;border-radius:99px;background:#EEF2F6;overflow:hidden;")}>
+                      <div style={s(`height:100%;width:${rb.pct}%;background:#FFC53D;border-radius:99px;`)} />
+                    </div>
+                    <span style={s("font-size:12px;color:#9AAABA;font-weight:600;width:30px;text-align:right;")}>{rb.n}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {reviewsActividad.length === 0 ? (
+              <div style={s("color:#9AAABA;font-size:13.5px;font-weight:600;margin-bottom:34px;")}>
+                Todavía no hay opiniones publicadas para esta actividad.
+              </div>
+            ) : (
+              <div style={s("display:flex;flex-direction:column;gap:12px;margin-bottom:14px;")}>
+                <div style={s("display:flex;flex-wrap:wrap;align-items:center;gap:7px;")}>
+                  <span style={s("font:700 12.5px Manrope,sans-serif;color:#41566B;margin-right:2px;")}>Calificación</span>
+                  <span
+                    className="ah-btn"
+                    onClick={() => {
+                      setEstrellasSel(null);
+                      alInicioDeLaLista();
+                    }}
+                    style={chipOpinion(estrellasSel === null)}
+                  >
+                    Todas
+                  </span>
+                  {ratingBars.map((rb) => (
+                    <span
+                      key={rb.star}
+                      className="ah-btn"
+                      role="button"
+                      aria-label={`${rb.star} ${rb.star === 1 ? "estrella" : "estrellas"} (${rb.n})`}
+                      onClick={() => {
+                        setEstrellasSel(rb.star);
+                        alInicioDeLaLista();
+                      }}
+                      style={chipOpinion(estrellasSel === rb.star)}
+                    >
+                      {rb.star}
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill={estrellasSel === rb.star ? "#FFC53D" : "#F5B301"}>
+                        <path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z" />
+                      </svg>
+                      <span style={s("font-weight:600;opacity:.75;")}>({rb.n})</span>
+                    </span>
+                  ))}
+                </div>
+                <div style={s("display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;")}>
+                <span style={s("font-size:13px;color:#7A8C9E;font-weight:600;")}>
+                  {estrellasSel !== null
+                    ? `Mostrando ${opiniones.length} de ${reviewsActividad.length} opiniones`
+                    : `${reviewsActividad.length} ${reviewsActividad.length === 1 ? "opinión" : "opiniones"}`}
+                </span>
+                <label style={s("display:flex;align-items:center;gap:8px;font:600 13px Manrope,sans-serif;color:#7A8C9E;")}>
+                  Ordenar por
+                  <select
+                    value={ordenOpiniones}
+                    onChange={(e) => {
+                      setOrdenOpiniones(e.target.value as OrdenOpiniones);
+                      alInicioDeLaLista();
+                    }}
+                    style={s("border:1px solid #E2E9F0;border-radius:10px;padding:8px 10px;font:700 13px Manrope,sans-serif;color:#0E2A47;background:#fff;")}
+                  >
+                    {ORDENES_OPINIONES.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                </div>
+              </div>
+            )}
+            {/* Todas las opiniones, en un contenedor con su propio scroll (antes se cortaba en las
+                primeras 5 y las demás no se podían ver). */}
+            <div
+              ref={listaOpinionesRef}
+              className="ah-scroll"
+              data-testid="lista-opiniones"
+              style={s(
+                `display:flex;flex-direction:column;gap:14px;max-height:620px;overflow-y:auto;padding-right:6px;margin-bottom:${reviewsActividad.length > 0 ? 34 : 0}px;`,
+              )}
+            >
+              {reviewsActividad.length > 0 && opiniones.length === 0 && (
+                <div style={s("background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:26px 20px;text-align:center;color:#7A8C9E;font-size:13.5px;font-weight:600;")}>
+                  No hay opiniones con {estrellasSel} {estrellasSel === 1 ? "estrella" : "estrellas"}.
+                </div>
+              )}
+              {opiniones.map((rv) => {
+                return (
+                  <div key={rv.id} style={s("background:#fff;border:1px solid #E7EDF3;border-radius:16px;padding:18px 20px;")}>
+                    <div style={s("display:flex;align-items:center;gap:11px;margin-bottom:10px;")}>
+                      <Avatar
+                        usuarioId={rv.alumno.id}
+                        nombre={rv.alumno.nombre}
+                        size={38}
+                        fontSize={15}
+                        gradient="#EEF4FB"
+                        textColor="#2D5BC8"
+                      />
+                      <div>
+                        <div style={s("font:700 14.5px Manrope,sans-serif;color:#0E2A47;")}>
+                          {rv.alumno.nombre} {rv.alumno.apellido}
+                        </div>
+                        <div style={s("font-size:12px;color:#9AAABA;font-weight:600;")}>{formatFecha(rv.createdAt)}</div>
+                      </div>
+                      <div style={s("margin-left:auto;display:flex;gap:1px;")}>
+                        {[0, 1, 2, 3, 4].map((i) => (
+                          <svg key={i} width="13" height="13" viewBox="0 0 24 24" fill={i < rv.puntaje ? "#FFC53D" : "#E3E9EF"}>
+                            <path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z" />
+                          </svg>
+                        ))}
+                      </div>
+                    </div>
+                    <p style={s("font-size:14.5px;line-height:1.6;color:#54697E;margin:0;")}>{rv.comentario?.trim() ? rv.comentario : <span style={s("color:#9AAABA;font-style:italic;")}>Sin comentario</span>}</p>
+                    {/* La respuesta pública del instructor (E2I-HU11 crit. 4). Se guardaba
+                        desde hacía rato pero acá no se pedía ni se mostraba, así que el
+                        alumno —el único destinatario— nunca la veía. */}
+                    {rv.respuestaInstructor?.trim() && (
+                      <div
+                        style={s(
+                          "margin-top:13px;padding:12px 14px;background:#F6F9FC;border-left:3px solid #12B5A5;border-radius:0 11px 11px 0;",
+                        )}
+                      >
+                        <div style={s("font:700 12.5px Manrope,sans-serif;color:#0C8576;margin-bottom:5px;")}>
+                          Respuesta de {instructorNombreCompleto ?? "el instructor"}
+                          {rv.respuestaInstructorAt ? ` · ${formatFecha(rv.respuestaInstructorAt)}` : ""}
+                        </div>
+                        <p style={s("font-size:13.5px;line-height:1.55;color:#54697E;margin:0;")}>{rv.respuestaInstructor}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+              </>
+            )}
+
+            {/* Acá había una sección "Preguntas frecuentes" con tres preguntas fijas, iguales para
+                toda actividad, y respuestas que contradecían al sistema (una "política de
+                cancelación de la clase" que no existe, "no hace falta experiencia" en actividades de
+                exigencia alta). Se retiró el 2026-10-24: las dudas generales las responden la
+                burbuja "¿Dudas?" de esta misma pantalla, /ayuda y el manual. */}
+          </div>
+
+          {/* RIGHT: BOOKING */}
+          <BookingPanel
+            actividad={actividad}
+            selectedClase={selectedClase}
+            isFav={isFav}
+            onToggleFav={onToggleFav}
+            misInscripciones={misInscripciones}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BookingPanel({
+  actividad,
+  selectedClase,
+  isFav,
+  onToggleFav,
+  misInscripciones,
+}: {
+  actividad: Actividad;
+  selectedClase: Clase | undefined;
+  isFav: boolean;
+  onToggleFav: () => void;
+  misInscripciones: MiInscripcion[];
+}) {
+  const navigate = useNavigate();
+  const { currentUser, puede } = useAuth();
+  const geolocation = useGeolocation();
+  /**
+   * RN-19: preinscribirse, inscribirse y cancelar es un modulo con permiso propio. Sin el, el
+   * backend devuelve 403 en /api/alumno/inscripciones, asi que mostrar el boton solo servia
+   * para chocar contra el error. El detalle de la actividad se sigue viendo entero: explorar
+   * el catalogo es un permiso implicito que tiene todo rol.
+   */
+  const puedeInscribirse = puede("inscripciones.gestionar");
+
+  // A diferencia de Explorar (donde pedir ubicación queda atrás de un click
+  // explícito para no ser invasivo en una lista larga), acá el usuario ya
+  // tomó la decisión de entrar a esta actividad puntual, así que mostrar
+  // "a cuántos km estoy" apenas carga la pantalla es el comportamiento
+  // esperado, no una sorpresa.
+  useEffect(() => {
+    geolocation.request();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const distanciaKm =
+    geolocation.coords && actividad.lat !== undefined && actividad.lng !== undefined
+      ? haversineKm(geolocation.coords.lat, geolocation.coords.lng, actividad.lat, actividad.lng)
+      : undefined;
+
+  const ingreso = selectedClase ? tipoIngreso(selectedClase) : null;
+  const existente = selectedClase && currentUser
+    ? misInscripciones.find((i) => i.claseId === selectedClase.id && i.estado !== "Cancelada")
+    : undefined;
+
+  const dias = selectedClase ? diasHastaClase(selectedClase) : 0;
+  const libres = selectedClase ? selectedClase.cuposMax - selectedClase.cuposOcupados : 0;
+  const pct = selectedClase ? Math.min(100, Math.round((selectedClase.cuposOcupados / selectedClase.cuposMax) * 100)) : 0;
+
+  let msg = "Elegí una fecha disponible para ver el detalle de inscripción.";
+  if (!puedeInscribirse) {
+    msg = "Tu rol no tiene habilitado el módulo de inscripciones. Podés explorar el catálogo, pero no anotarte en clases. Consultá con un administrador.";
+  } else if (selectedClase && ingreso === "preinscripcion" && !existente) {
+    msg = `Faltan ${dias} días para la clase. Podés preinscribirte ahora; la inscripción con pago se habilita cuando falten 4 días o menos.`;
+  } else if (selectedClase && ingreso === "preinscripcion" && existente?.estado === "PreInscripción") {
+    msg = "Ya te preinscribiste. Te avisaremos cuando falten 4 días para que puedas inscribirte y pagar.";
+  } else if (selectedClase && ingreso === "inscripcion" && (!existente || existente.estado === "Cancelada")) {
+    msg = `Faltan ${dias} día${dias === 1 ? "" : "s"}. Ya podés inscribirte y confirmar tu lugar pagando.`;
+  } else if (selectedClase && existente?.estado === "PagoPendiente") {
+    msg = "Tu inscripción quedó con pago pendiente en efectivo. Aboná al instructor antes de la clase.";
+  } else if (selectedClase && existente?.estado === "Inscripto") {
+    msg = `¡Ya estás inscripto/a! Te esperamos el ${formatFecha(selectedClase.fechaHora)} a las ${formatHora(selectedClase.fechaHora)}.`;
+  }
+
+  return (
+    <div style={s("position:sticky;top:88px;")}>
+      <div style={s("background:#fff;border:1px solid #E7EDF3;border-radius:22px;padding:24px;box-shadow:0 14px 40px rgba(14,42,71,.10);")}>
+        <div style={s("display:flex;align-items:baseline;gap:6px;margin-bottom:4px;")}>
+          {/* Con una fecha elegida mandamos el precio de ESA clase (V23) — es el que va a
+              cobrar el backend. Sin fecha todavía no hay clase, así que se muestra el precio
+              de lista de la actividad, igual que en el catálogo. */}
+          <span style={s("font:700 34px Space Grotesk,sans-serif;color:#0E2A47;")}>
+            ${(selectedClase?.precio ?? actividad.precio).toLocaleString("es-AR")}
+          </span>
+          <span style={s("font-size:14px;color:#90A1B2;font-weight:600;")}>/ clase</span>
+        </div>
+        <div style={s("font-size:13px;color:#7A8C9E;font-weight:600;margin-bottom:18px;")}>
+          {selectedClase
+            ? `${formatFecha(selectedClase.fechaHora)} · ${formatHora(selectedClase.fechaHora)} a ${formatHora(
+                selectedClase.horaFin,
+              )} hs`
+            : "Sin fecha seleccionada"}
+        </div>
+
+        {selectedClase && (
+          <div style={s("background:#F6F9FC;border:1px solid #EAF0F6;border-radius:14px;padding:14px 16px;margin-bottom:18px;")}>
+            <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;")}>
+              <span style={s("font:700 13.5px Manrope,sans-serif;color:#41566B;display:flex;align-items:center;gap:7px;")}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#12B5A5" strokeWidth={2}>
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                </svg>
+                Cupos disponibles
+              </span>
+              <span style={s("font:700 14px Space Grotesk,sans-serif;color:#0C8576;")}>
+                {libres} / {selectedClase.cuposMax}
+              </span>
+            </div>
+            <div style={s("height:8px;border-radius:99px;background:#E3EAF1;overflow:hidden;")}>
+              <div style={s(`height:100%;width:${pct}%;background:linear-gradient(90deg,#12B5A5,#0FB8A9);border-radius:99px;`)} />
+            </div>
+            {!!selectedClase.cantidadPreInscripcion && (
+              <div style={s("display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12.5px;color:#7A8C9E;font-weight:600;")}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#90A1B2" strokeWidth={2}>
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 8v4l2.5 2.5" />
+                </svg>
+                {selectedClase.cantidadPreInscripcion === 1
+                  ? "1 persona ya se preinscribió"
+                  : `${selectedClase.cantidadPreInscripcion} personas ya se preinscribieron`}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!puedeInscribirse && (
+          <div
+            style={s(
+              "background:#F4F7FA;border:1px solid #E2E9F0;border-radius:13px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px;",
+            )}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7A8C9E" strokeWidth={2} style={{ flex: "none", marginTop: "1px" }}>
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <span style={s("font:600 12.5px Manrope,sans-serif;color:#5A6B7D;line-height:1.5;")}>
+              Inscripciones no habilitadas para tu rol.
+            </span>
+          </div>
+        )}
+
+        {puedeInscribirse && selectedClase && ingreso === "preinscripcion" && !existente && (
+          <>
+            <button
+              className="ah-btn"
+              onClick={() => navigate(`/alumno/preinscripcion/${selectedClase.id}`)}
+              style={s(
+                "width:100%;background:#0FB8A9;color:#fff;border:none;border-radius:13px;padding:15px;font:700 16px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(15,184,169,.32);margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:9px;",
+              )}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2}>
+                <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              </svg>
+              Preinscribirme
+            </button>
+            <button
+              disabled
+              style={s(
+                "width:100%;background:#EEF1F4;color:#A6B3C0;border:none;border-radius:13px;padding:15px;font:700 16px Manrope,sans-serif;cursor:not-allowed;margin-bottom:14px;",
+              )}
+            >
+              Inscribirme
+            </button>
+          </>
+        )}
+
+        {puedeInscribirse && selectedClase && ingreso === "preinscripcion" && existente?.estado === "PreInscripción" && (
+          <>
+            <button
+              disabled
+              style={s(
+                "width:100%;background:#fff;color:#0C8576;border:1.5px solid #CBEDE7;border-radius:13px;padding:14px;font:700 15px Manrope,sans-serif;cursor:default;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:8px;",
+              )}
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2.4}>
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
+              PreInscripción realizada
+            </button>
+            <button
+              disabled
+              style={s(
+                "width:100%;background:#EEF1F4;color:#A6B3C0;border:none;border-radius:13px;padding:15px;font:700 16px Manrope,sans-serif;cursor:not-allowed;margin-bottom:14px;",
+              )}
+            >
+              Inscribirme
+            </button>
+          </>
+        )}
+
+        {puedeInscribirse && selectedClase && ingreso === "inscripcion" && (!existente || existente.estado === "Cancelada") && (
+          <button
+            className="ah-btn"
+            onClick={() => navigate(`/alumno/inscripcion/${selectedClase.id}`)}
+            style={s(
+              "width:100%;background:#FF6A2B;color:#fff;border:none;border-radius:13px;padding:15px;font:700 16px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(255,106,43,.32);margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:9px;",
+            )}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2}>
+              <rect x="2" y="5" width="20" height="14" rx="2" />
+              <path d="M2 10h20" />
+            </svg>
+            Inscribirme y pagar
+          </button>
+        )}
+
+        {puedeInscribirse && selectedClase && ingreso === "inscripcion" && existente?.estado === "PreInscripción" && (
+          <>
+            <button
+              disabled
+              style={s(
+                "width:100%;background:#fff;color:#0C8576;border:1.5px solid #CBEDE7;border-radius:13px;padding:14px;font:700 15px Manrope,sans-serif;cursor:default;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:8px;",
+              )}
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2.4}>
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
+              PreInscripción realizada
+            </button>
+            <button
+              className="ah-btn"
+              onClick={() => navigate(`/alumno/inscripcion/${selectedClase.id}`)}
+              style={s(
+                "width:100%;background:#FF6A2B;color:#fff;border:none;border-radius:13px;padding:15px;font:700 16px Manrope,sans-serif;cursor:pointer;box-shadow:0 8px 18px rgba(255,106,43,.32);margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:9px;",
+              )}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2}>
+                <rect x="2" y="5" width="20" height="14" rx="2" />
+                <path d="M2 10h20" />
+              </svg>
+              Inscribirme y pagar
+            </button>
+          </>
+        )}
+
+        {puedeInscribirse && selectedClase && existente?.estado === "PagoPendiente" && (
+          <button
+            disabled
+            style={s(
+              "width:100%;background:#FFF3E0;color:#B9741A;border:1.5px solid #F6E2C0;border-radius:13px;padding:14px;font:700 15px Manrope,sans-serif;cursor:default;margin-bottom:14px;",
+            )}
+          >
+            Pago pendiente de confirmación
+          </button>
+        )}
+
+        {puedeInscribirse && selectedClase && existente?.estado === "Inscripto" && (
+          <button
+            disabled
+            style={s(
+              "width:100%;background:#E7F8F5;color:#0C8576;border:1.5px solid #CBEDE7;border-radius:13px;padding:14px;font:700 15px Manrope,sans-serif;cursor:default;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:8px;",
+            )}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0C8576" strokeWidth={2.4}>
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+            Ya estás inscripto/a
+          </button>
+        )}
+
+        <div style={s("display:flex;gap:10px;background:#EAF1FE;border:1px solid #D5E2FB;border-radius:12px;padding:12px 14px;")}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2D5BC8" strokeWidth={2} style={s("flex:none;margin-top:1px;")}>
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 16v-4M12 8h.01" />
+          </svg>
+          <span style={s("font-size:12.8px;line-height:1.5;color:#2D5BC8;font-weight:600;")}>{msg}</span>
+        </div>
+
+        <div style={s("display:flex;gap:9px;margin-top:16px;")}>
+          <button
+            className="ah-btn"
+            onClick={onToggleFav}
+            style={s(
+              `flex:1;background:${isFav ? "#FFF4EE" : "#fff"};border:1px solid ${isFav ? "#FFD9C4" : "#E2E9F0"};border-radius:11px;padding:11px;font:700 13.5px Manrope,sans-serif;color:${isFav ? "#FF6A2B" : "#41566B"};cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;`,
+            )}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill={isFav ? "#FF6A2B" : "none"} stroke={isFav ? "#FF6A2B" : "#41566B"} strokeWidth={2}>
+              <path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 12 5 5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z" />
+            </svg>
+            {isFav ? "Guardado" : "Guardar"}
+          </button>
+          <button
+            className="ah-btn"
+            onClick={() => {
+              try {
+                navigator.clipboard.writeText(window.location.href);
+              } catch {
+                /* clipboard unavailable */
+              }
+            }}
+            style={s(
+              "flex:1;background:#fff;border:1px solid #E2E9F0;border-radius:11px;padding:11px;font:700 13.5px Manrope,sans-serif;color:#41566B;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;",
+            )}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#41566B" strokeWidth={2}>
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5" />
+            </svg>
+            Compartir
+          </button>
+        </div>
+      </div>
+      <div style={s("margin-top:16px;background:#fff;border:1px solid #E7EDF3;border-radius:18px;overflow:hidden;")}>
+        <LeafletMap
+          lat={actividad.lat}
+          lng={actividad.lng}
+          height={150}
+          title={actividad.ubicacion}
+          placeholderText="Ubicación disponible al confirmar tu inscripción"
+        />
+        <div style={s("padding:14px 16px;")}>
+          <div style={s("font:700 14px Manrope,sans-serif;color:#0E2A47;margin-bottom:3px;")}>{actividad.ubicacion}</div>
+          <div style={s("font-size:12.5px;color:#7A8C9E;font-weight:600;")}>Ver ubicación exacta al confirmar tu inscripción</div>
+          {distanciaKm !== undefined && (
+            <div style={s("font-size:12.5px;color:#12B5A5;font-weight:700;margin-top:4px;")}>
+              A {formatDistanciaKm(distanciaKm)} de tu ubicación
+            </div>
+          )}
+          {actividad.lat !== undefined && actividad.lng !== undefined && geolocation.status === "denied" && (
+            <div style={s("margin-top:10px;")}>
+              <ActivarUbicacion geolocation={geolocation} para="saber a qué distancia te queda" variante="linea" />
+            </div>
+          )}
+          {actividad.lat !== undefined && actividad.lng !== undefined && (
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${actividad.lat},${actividad.lng}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={s(
+                "display:flex;align-items:center;gap:6px;margin-top:10px;font:700 12.5px Manrope,sans-serif;color:#12B5A5;text-decoration:none;",
+              )}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#12B5A5" strokeWidth={2}>
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <path d="M15 3h6v6" />
+                <path d="M10 14 21 3" />
+              </svg>
+              Abrir en Google Maps
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

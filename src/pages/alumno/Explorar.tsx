@@ -1,0 +1,582 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
+import AlumnoNav from "../../components/AlumnoNav";
+import ActivityCard from "../../components/ActivityCard";
+import { CargandoSeccion } from "../../components/Cargando";
+import { s } from "../../lib/style";
+import { incluye } from "../../lib/texto";
+import { useData } from "../../context/DataContext";
+import { haversineKm, useGeolocation } from "../../lib/geo";
+import ActivarUbicacion from "../../components/ActivarUbicacion";
+import Paginacion from "../../components/Paginacion";
+import { usePaginado } from "../../lib/paginado";
+import RangoDoble from "../../components/RangoDoble";
+import {
+  DISTANCIA_MAX_KM,
+  DISTANCIA_PASO_KM,
+  RANGO_COMPLETO,
+  dentroDelRangoDistancia,
+  filtroDistanciaActivo,
+  formatKmFiltro,
+  rangoHasta,
+} from "../../lib/distancia";
+import type { RangoDistancia } from "../../lib/distancia";
+import type { Actividad, Categoria, TipoActividad } from "../../lib/types";
+/** 4 filas de la grilla de 3 columnas. */
+const POR_PAGINA = 12;
+
+const SORTS = ["Relevancia", "Precio: menor", "Precio: mayor", "Mejor valoradas", "Cercanía"] as const;
+type Sort = (typeof SORTS)[number];
+
+function distanciaKm(a: Actividad, userCoords: { lat: number; lng: number } | null): number | undefined {
+  if (!userCoords || a.lat === undefined || a.lng === undefined) return undefined;
+  return haversineKm(userCoords.lat, userCoords.lng, a.lat, a.lng);
+}
+
+const GEO_TITLE = (status: string): string | undefined =>
+  status === "denied"
+    ? "Activá la ubicación en tu navegador para filtrar/ordenar por cercanía"
+    : status === "unsupported"
+      ? "Tu navegador no soporta geolocalización"
+      : undefined;
+
+const SORT_TITLES: Partial<Record<Sort, (status: string) => string | undefined>> = {
+  Cercanía: GEO_TITLE,
+};
+
+function disponibilidadDe(a: Actividad): { label: string; type: "disponible" | "ultimos" | "sincupos" } {
+  const p = a.proximaClase;
+  if (!p) return { label: "Disponible", type: "disponible" };
+  const libres = p.cuposMax - p.cuposOcupados;
+  if (libres <= 0) return { label: "Sin cupos", type: "sincupos" };
+  if (libres <= 3) return { label: `${libres} cupos · Últimos`, type: "ultimos" };
+  return { label: "Disponible", type: "disponible" };
+}
+
+function cardProps(
+  a: Actividad,
+  getTipoActividad: (id: string) => TipoActividad | undefined,
+  getCategoria: (id: string) => Categoria | undefined,
+  instructorNombre: Record<string, string>,
+  userCoords: { lat: number; lng: number } | null,
+) {
+  const tipo = getTipoActividad(a.tipoActividadId);
+  const cat = tipo ? getCategoria(tipo.categoriaId) : undefined;
+  const disp = disponibilidadDe(a);
+  const cupColor = disp.type === "sincupos" ? "#BE3A3E" : disp.type === "ultimos" ? "#B9741A" : "#0C8576";
+  return {
+    id: a.id,
+    name: a.nombre,
+    catName: cat?.nombre ?? "",
+    nivel: a.nivelIntensidad,
+    photoTint: a.photoTint,
+    statusType: disp.type,
+    rating: a.rating,
+    location: a.ubicacion,
+    instructor: instructorNombre[a.instructorId] ?? "",
+    price: a.precio,
+    cupText: disp.label,
+    cupColor,
+    distanceKm: distanciaKm(a, userCoords),
+    disp,
+  };
+}
+
+const FRANJAS = ["Cualquier horario", "Mañana", "Tarde", "Noche"] as const;
+type Franja = (typeof FRANJAS)[number];
+
+/** Franja horaria de la próxima clase, en hora local (que es la del alumno y la del negocio). */
+function franjaDe(iso: string): Franja {
+  const hora = new Date(iso).getHours();
+  if (hora < 12) return "Mañana";
+  if (hora < 18) return "Tarde";
+  return "Noche";
+}
+
+/** `YYYY-MM-DD` local, para comparar contra el `<input type="date">` sin que UTC corra el día. */
+function diaLocal(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+interface ExplorarNavState {
+  search?: string;
+  categoriaId?: string;
+  tipoActividadId?: string;
+  /** Nombre del nivel (E4Ad-HU05: ya no es una union fija). */
+  nivel?: string;
+  maxPrecio?: number;
+  /** "Hasta X km" (filtros rápidos del Home): la manija máxima de la barra de distancia. */
+  distanciaMaxKm?: number;
+  fecha?: string;
+  franja?: string;
+}
+
+export default function AlumnoExplorar() {
+  const {
+    actividades, tiposActividad, categorias, nivelesIntensidad, getTipoActividad, getCategoria, instructorNombre,
+    cargandoCatalogo, registrarInteraccion,
+  } = useData();
+  const location = useLocation();
+  const [search, setSearch] = useState("");
+  const [catSel, setCatSel] = useState<Set<string>>(new Set());
+  const [tipoSel, setTipoSel] = useState<Set<string>>(new Set());
+  const [nivelSel, setNivelSel] = useState<Set<string>>(new Set());
+  // null = sin tocar el filtro todavía (sin límite). El rango del slider se
+  // calcula de los precios reales en vez de un tope fijo, que quedaba
+  // desactualizado apenas una actividad costaba más que ese tope.
+  const [maxPrecio, setMaxPrecio] = useState<number | null>(null);
+  const [sort, setSort] = useState<Sort>("Relevancia");
+  const [rangoDist, setRangoDist] = useState<RangoDistancia>(RANGO_COMPLETO);
+  const distanciaActiva = filtroDistanciaActivo(rangoDist);
+  // Fecha y horario filtran sobre la próxima clase de cada actividad: son los dos filtros
+  // rápidos que el Home ofrece y que acá no existían.
+  const [fecha, setFecha] = useState("");
+  const [franja, setFranja] = useState<Franja>("Cualquier horario");
+  const geolocation = useGeolocation();
+
+  // Entrar desde otra pantalla (buscador del header, buscador/chips de
+  // categoría/"cerca tuyo" de Home) manda la intención ya elegida por
+  // location.state. Se sincroniza con cada navegación nueva (location.key
+  // cambia incluso si la ruta es la misma, ej. buscar de nuevo desde el header
+  // estando ya parado en Explorar) — no solo al montar el componente.
+  /* eslint-disable react-hooks/set-state-in-effect -- sincroniza los filtros con la navegación
+     (location.state), que es un sistema externo al componente. */
+  useEffect(() => {
+    const navState = (location.state ?? {}) as ExplorarNavState;
+    if (navState.search !== undefined) setSearch(navState.search);
+    if (navState.categoriaId) setCatSel(new Set([navState.categoriaId]));
+    if (navState.tipoActividadId) setTipoSel(new Set([navState.tipoActividadId]));
+    if (navState.nivel) setNivelSel(new Set([navState.nivel]));
+    if (navState.maxPrecio !== undefined) setMaxPrecio(navState.maxPrecio);
+    if (navState.fecha !== undefined) setFecha(navState.fecha);
+    if (navState.franja && (FRANJAS as readonly string[]).includes(navState.franja)) {
+      setFranja(navState.franja as Franja);
+    }
+    if (navState.distanciaMaxKm !== undefined) {
+      const r = rangoHasta(navState.distanciaMaxKm);
+      setRangoDist(r);
+      if (filtroDistanciaActivo(r)) geolocation.request();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const precioMin = actividades.length ? Math.min(...actividades.map((a) => a.precio)) : 0;
+  const precioMax = actividades.length ? Math.max(...actividades.map((a) => a.precio)) : 10000;
+  const precioSlider = maxPrecio ?? precioMax;
+
+  const toggle = <T,>(set: Set<T>, value: T, setter: (s: Set<T>) => void) => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    setter(next);
+  };
+
+  const toggleCategoria = (categoriaId: string) => {
+    const next = new Set(catSel);
+    if (next.has(categoriaId)) {
+      next.delete(categoriaId);
+      // Al ocultar los tipos de esta categoría, sacamos también los que
+      // hubiera seleccionados: si no, seguirían filtrando en silencio sin
+      // aparecer ya ningún chip que lo explique.
+      setTipoSel((prev) => {
+        const pruned = new Set(prev);
+        for (const t of tiposActividad) {
+          if (t.categoriaId === categoriaId) pruned.delete(t.id);
+        }
+        return pruned;
+      });
+    } else {
+      next.add(categoriaId);
+    }
+    setCatSel(next);
+  };
+
+  const tiposVisibles = useMemo(
+    () => tiposActividad.filter((t) => catSel.has(t.categoriaId)),
+    [tiposActividad, catSel],
+  );
+
+  const clearFilters = () => {
+    setCatSel(new Set());
+    setTipoSel(new Set());
+    setNivelSel(new Set());
+    setMaxPrecio(null);
+    setRangoDist(RANGO_COMPLETO);
+    setFecha("");
+    setFranja("Cualquier horario");
+    setSearch("");
+  };
+
+  const catCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const a of actividades) {
+      const tipo = getTipoActividad(a.tipoActividadId);
+      if (!tipo) continue;
+      counts[tipo.categoriaId] = (counts[tipo.categoriaId] ?? 0) + 1;
+    }
+    return counts;
+  }, [actividades]);
+
+  /**
+   * Lo que el alumno busca alimenta sus recomendaciones (V27 del backend).
+   *
+   * **Con retardo, no por tecla.** El filtrado de esta pantalla es instantáneo y no tiene
+   * botón de buscar, así que sin esperar se registraría "y", "yo", "yog", "yoga" como cuatro
+   * búsquedas distintas. Un segundo de quietud alcanza para que quede sólo lo que la persona
+   * terminó de escribir; el backend además ignora los términos de menos de tres caracteres y
+   * deduplica lo repetido dentro de diez minutos.
+   *
+   * `registrarInteraccion` nunca lanza: si falla, la búsqueda sigue funcionando igual.
+   */
+  useEffect(() => {
+    const term = search.trim();
+    if (term.length < 3) return;
+    const id = setTimeout(() => {
+      void registrarInteraccion("BUSQUEDA", { termino: term });
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [search, registrarInteraccion]);
+
+  const filtered = useMemo(() => {
+    const term = search.trim();
+    let list = actividades.filter((a) => {
+      const tipo = getTipoActividad(a.tipoActividadId);
+      if (term) {
+        const instructor = instructorNombre[a.instructorId] ?? "";
+        if (!incluye(a.nombre, term) && !incluye(instructor, term)) return false;
+      }
+      if (catSel.size > 0 && (!tipo || !catSel.has(tipo.categoriaId))) return false;
+      if (tipoSel.size > 0 && !tipoSel.has(a.tipoActividadId)) return false;
+      if (nivelSel.size > 0 && !nivelSel.has(a.nivelIntensidad)) return false;
+      if (maxPrecio !== null && a.precio > maxPrecio) return false;
+      if (!dentroDelRangoDistancia(distanciaKm(a, geolocation.coords), rangoDist)) return false;
+      if (fecha || franja !== "Cualquier horario") {
+        // Sin próxima clase no hay ni fecha ni horario que puedan coincidir.
+        if (!a.proximaClase) return false;
+        if (fecha && diaLocal(a.proximaClase.fechaHora) !== fecha) return false;
+        if (franja !== "Cualquier horario" && franjaDe(a.proximaClase.fechaHora) !== franja) return false;
+      }
+      return true;
+    });
+    list = [...list];
+    if (sort === "Precio: menor") list.sort((x, y) => x.precio - y.precio);
+    else if (sort === "Precio: mayor") list.sort((x, y) => y.precio - x.precio);
+    else if (sort === "Mejor valoradas") list.sort((x, y) => y.rating - x.rating);
+    else if (sort === "Cercanía") {
+      list.sort((x, y) => {
+        const dx = distanciaKm(x, geolocation.coords) ?? Infinity;
+        const dy = distanciaKm(y, geolocation.coords) ?? Infinity;
+        return dx - dy;
+      });
+    }
+    return list;
+  }, [
+    actividades,
+    search,
+    catSel,
+    tipoSel,
+    nivelSel,
+    maxPrecio,
+    rangoDist,
+    // Fecha y horario faltaban: elegir una fecha o una franja no volvía a filtrar la lista
+    // hasta que se tocara otro filtro, y los resultados quedaban mostrando lo anterior.
+    fecha,
+    franja,
+    sort,
+    getTipoActividad,
+    instructorNombre,
+    geolocation.coords,
+  ]);
+
+  // Paginación (2026-10-24). La clave de reinicio es el resultado mismo (ids en orden): cualquier
+  // filtro, búsqueda u orden nuevo cambia la lista y vuelve a la página 1, sin tener que
+  // acordarse de reiniciar en cada uno de los controles.
+  const pag = usePaginado(filtered, POR_PAGINA, filtered.map((a) => a.id).join(","));
+  const resultadosRef = useRef<HTMLDivElement>(null);
+  const irAPagina = (n: number) => {
+    pag.irAPagina(n);
+    resultadosRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  return (
+    <div className="ah-screen" style={s("min-height:100vh;background:#F4F7FA;")}>
+      <AlumnoNav active="explorar" />
+      {/*
+        Banner con foto de fondo (`public/explorar-hero.webp`, 1024×434, 70 KB): ocupa todo el
+        ancho, encuadrada para que se vean el grupo entrenando y las pesas sobre el pasto, con
+        un velo de los azules de la marca más denso a la izquierda (`.ah-explorar-hero-velo` en
+        index.css). Decorativa: va como fondo CSS, no como <img>.
+      */}
+      <div style={s("background:#0E2A47;position:relative;overflow:hidden;")}>
+        <div
+          data-testid="explorar-hero-foto"
+          style={{
+            ...s("position:absolute;inset:0;background-size:cover;background-position:center 65%;background-repeat:no-repeat;pointer-events:none;"),
+            backgroundImage: "url(/explorar-hero.webp)",
+          }}
+        />
+        <div className="ah-explorar-hero-velo" style={s("position:absolute;inset:0;pointer-events:none;")} />
+        <div style={s("max-width:1240px;margin:0 auto;padding:34px 28px 30px;position:relative;")}>
+          <h1 style={s("font:700 34px Space Grotesk,sans-serif;color:#fff;letter-spacing:-.8px;margin:0 0 8px;text-shadow:0 2px 12px rgba(14,42,71,.35);")}>
+            Explorar actividades
+          </h1>
+          <p style={s("font-size:15.5px;color:#C3D2E0;max-width:560px;margin:0 0 20px;")}>
+            Encontrá tu próxima actividad: filtrá por categoría, tipo, nivel de exigencia y precio.
+          </p>
+          <div
+            style={s(
+              "background:#fff;border-radius:14px;padding:6px;display:flex;align-items:center;gap:8px;max-width:520px;box-shadow:0 14px 30px rgba(0,0,0,.18);",
+            )}
+          >
+            <div style={s("flex:1;display:flex;align-items:center;gap:10px;padding:8px 12px;")}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#12B5A5" strokeWidth={2}>
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por actividad o instructor…"
+                style={s("border:none;outline:none;font:600 14px Manrope,sans-serif;color:#0E2A47;width:100%;")}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        className="ah-grid-side"
+        style={s("max-width:1240px;margin:0 auto;padding:26px 28px 60px;display:grid;grid-template-columns:248px 1fr;gap:26px;")}
+      >
+        <aside
+          style={s(
+            "align-self:start;background:#fff;border:1px solid #E7EDF3;border-radius:18px;padding:22px;box-shadow:0 1px 2px rgba(14,42,71,.04);",
+          )}
+        >
+          <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;")}>
+            <span style={s("font:700 16px Space Grotesk,sans-serif;")}>Filtros</span>
+            <span className="ah-link" onClick={clearFilters} style={s("font-size:13px;font-weight:700;color:#12B5A5;cursor:pointer;")}>
+              Limpiar
+            </span>
+          </div>
+          <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin-bottom:11px;")}>Categoría</div>
+          <div style={s("display:flex;flex-direction:column;gap:10px;margin-bottom:22px;")}>
+            {categorias.map((c) => {
+              const on = catSel.has(c.id);
+              return (
+                <label
+                  key={c.id}
+                  style={s("display:flex;align-items:center;gap:10px;font-size:14px;color:#41566B;font-weight:600;cursor:pointer;")}
+                  onClick={() => toggleCategoria(c.id)}
+                >
+                  <span
+                    style={s(
+                      `width:18px;height:18px;border-radius:5px;border:2px solid ${on ? "#12B5A5" : "#D6DEE7"};background:${on ? "#12B5A5" : "#fff"};display:flex;align-items:center;justify-content:center;flex:none;`,
+                    )}
+                  >
+                    {on && (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3}>
+                        <path d="M20 6 9 17l-5-5" />
+                      </svg>
+                    )}
+                  </span>
+                  {c.nombre}
+                  <span style={s("margin-left:auto;font-size:12px;color:#9AAABA;")}>{catCounts[c.id] ?? 0}</span>
+                </label>
+              );
+            })}
+          </div>
+          <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin-bottom:11px;")}>Tipo de actividad</div>
+          <div style={s("display:flex;flex-wrap:wrap;gap:7px;margin-bottom:22px;")}>
+            {tiposVisibles.length === 0 && (
+              <span style={s("font-size:12.5px;color:#9AAABA;font-weight:600;")}>
+                {catSel.size === 0
+                  ? "Elegí una categoría para ver sus tipos."
+                  : "Esta categoría todavía no tiene tipos de actividad."}
+              </span>
+            )}
+            {tiposVisibles.map((t) => {
+              const on = tipoSel.has(t.id);
+              return (
+                <span
+                  key={t.id}
+                  className="ah-btn"
+                  onClick={() => toggle(tipoSel, t.id, setTipoSel)}
+                  style={s(
+                    `cursor:pointer;padding:6px 12px;border-radius:99px;font:700 12.5px Manrope,sans-serif;background:${on ? "#0E2A47" : "#F2F5F9"};color:${on ? "#fff" : "#41566B"};border:1px solid ${on ? "#0E2A47" : "#E2E9F0"};`,
+                  )}
+                >
+                  {t.nombre}
+                </span>
+              );
+            })}
+          </div>
+          <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin-bottom:11px;")}>Nivel de exigencia</div>
+          <div style={s("display:flex;flex-wrap:wrap;gap:7px;margin-bottom:22px;")}>
+            {nivelesIntensidad.map((nivel) => {
+              const n = nivel.nombre;
+              const on = nivelSel.has(n);
+              return (
+                <span
+                  key={n}
+                  className="ah-btn"
+                  onClick={() => toggle(nivelSel, n, setNivelSel)}
+                  style={s(
+                    `cursor:pointer;padding:6px 12px;border-radius:99px;font:700 12.5px Manrope,sans-serif;background:${on ? "#0E2A47" : "#F2F5F9"};color:${on ? "#fff" : "#41566B"};border:1px solid ${on ? "#0E2A47" : "#E2E9F0"};`,
+                  )}
+                >
+                  {n}
+                </span>
+              );
+            })}
+          </div>
+          <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin-bottom:14px;")}>Precio máximo</div>
+          <input
+            type="range"
+            min={precioMin}
+            max={precioMax}
+            value={precioSlider}
+            onChange={(e) => setMaxPrecio(Number(e.target.value))}
+            style={s("width:100%;accent-color:#FF6A2B;")}
+          />
+          <div style={s("display:flex;justify-content:space-between;font-size:12px;color:#9AAABA;font-weight:600;margin-top:6px;")}>
+            <span>${precioMin.toLocaleString("es-AR")}</span>
+            <span>${precioSlider.toLocaleString("es-AR")}</span>
+          </div>
+          <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin:22px 0 11px;")}>Fecha</div>
+          <input
+            type="date"
+            value={fecha}
+            onChange={(e) => setFecha(e.target.value)}
+            style={s("width:100%;border:1px solid #E2E9F0;border-radius:9px;padding:8px 10px;font:600 13px Manrope,sans-serif;color:#41566B;")}
+          />
+          <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin:22px 0 11px;")}>Horario</div>
+          <div style={s("display:flex;flex-wrap:wrap;gap:7px;")}>
+            {FRANJAS.map((opt) => {
+              const on = franja === opt;
+              return (
+                <span
+                  key={opt}
+                  className="ah-btn"
+                  onClick={() => setFranja(opt)}
+                  style={s(
+                    `cursor:pointer;padding:6px 12px;border-radius:99px;font:700 12.5px Manrope,sans-serif;background:${on ? "#0E2A47" : "#F2F5F9"};color:${on ? "#fff" : "#41566B"};border:1px solid ${on ? "#0E2A47" : "#E2E9F0"};`,
+                  )}
+                >
+                  {opt}
+                </span>
+              );
+            })}
+          </div>
+          {/* "Disponibilidad · Solo con cupos" se retiró (2026-10-23): filtraba actividades mirando
+              sólo su próxima clase, así que una actividad sin clases pasaba como "con cupos" y
+              una con la próxima clase llena quedaba afuera aunque tuviera otras con lugar. Para
+              hacerlo bien hace falta que el catálogo del backend informe las clases con lugar. */}
+          <div style={s("font:700 13px Manrope,sans-serif;color:#41566B;margin:22px 0 11px;")}>Distancia</div>
+          <div title={distanciaActiva ? GEO_TITLE(geolocation.status) : undefined}>
+            <RangoDoble
+              min={0}
+              max={DISTANCIA_MAX_KM}
+              step={DISTANCIA_PASO_KM}
+              desde={rangoDist.minKm}
+              hasta={rangoDist.maxKm}
+              formato={formatKmFiltro}
+              etiquetaDesde="Distancia mínima"
+              etiquetaHasta="Distancia máxima"
+              onChange={(minKm, maxKm) => {
+                const r = { minKm, maxKm };
+                setRangoDist(r);
+                // La ubicación se pide recién cuando el rango empieza a filtrar.
+                if (filtroDistanciaActivo(r)) geolocation.request();
+              }}
+            />
+          </div>
+        </aside>
+
+        <div ref={resultadosRef} style={s("scroll-margin-top:90px;")}>
+          <div style={s("display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:12px;")}>
+            <span style={s("font-size:14.5px;color:#65788C;font-weight:600;")}>
+              <strong style={s("color:#0E2A47;")}>{filtered.length} actividades</strong> encontradas
+            </span>
+            <div style={s("display:flex;align-items:center;gap:9px;")}>
+              <span style={s("font-size:13.5px;color:#7A8C9E;font-weight:600;")}>Ordenar por</span>
+              <div style={s("display:flex;gap:6px;background:#fff;border:1px solid #E2E9F0;border-radius:11px;padding:4px;")}>
+                {SORTS.map((opt) => {
+                  const on = sort === opt;
+                  return (
+                    <span
+                      key={opt}
+                      title={SORT_TITLES[opt]?.(geolocation.status)}
+                      onClick={() => {
+                        setSort(opt);
+                        if (opt === "Cercanía") geolocation.request();
+                      }}
+                      style={s(
+                        `padding:7px 13px;border-radius:8px;font:700 13px Manrope,sans-serif;cursor:pointer;color:${on ? "#fff" : "#65788C"};background:${on ? "#0E2A47" : "transparent"};`,
+                      )}
+                    >
+                      {opt}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          {sort === "Cercanía" && !distanciaActiva && geolocation.status === "denied" && (
+            <div style={s("margin-bottom:16px;")}>
+              <ActivarUbicacion geolocation={geolocation} para="ordenar las actividades por cercanía" variante="linea" />
+            </div>
+          )}
+          {cargandoCatalogo ? (
+            // Sin esto el catálogo vacío en vuelo se veía igual que "no hay actividades
+            // que coincidan", y encima con los contadores de los filtros en cero.
+            <CargandoSeccion seccion="actividades" />
+          ) : filtered.length === 0 ? (
+            <div
+              style={s(
+                "background:#fff;border:1px dashed #D6DEE7;border-radius:16px;padding:50px 20px;text-align:center;color:#7A8C9E;font-weight:600;",
+              )}
+            >
+              {/* Si hay un filtro de distancia activo pero no tenemos la ubicación, el
+                  resultado vacío no es "no hay actividades": es que no se puede calcular
+                  la distancia. Decirlo evita que el alumno crea que no hay oferta. */}
+              {distanciaActiva && !geolocation.coords ? (
+                <>
+                  <div style={s("margin-bottom:12px;")}>
+                    Para filtrar por distancia necesitamos tu ubicación, y todavía no la tenemos.
+                  </div>
+                  {geolocation.status === "denied" && (
+                    <div style={s("max-width:460px;margin:0 auto 12px;")}>
+                      <ActivarUbicacion geolocation={geolocation} para="filtrar por distancia" variante="linea" />
+                    </div>
+                  )}
+                  <button
+                    className="ah-btn"
+                    onClick={() => setRangoDist(RANGO_COMPLETO)}
+                    style={s(
+                      "background:#fff;border:1px solid #D6DEE7;border-radius:10px;padding:9px 16px;font:700 13px Manrope;color:#41566B;cursor:pointer;",
+                    )}
+                  >
+                    Ver todas sin filtrar por distancia
+                  </button>
+                </>
+              ) : (
+                "No se encontraron actividades con esos criterios."
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="ah-grid-3" style={s("display:grid;grid-template-columns:repeat(3,1fr);gap:20px;")}>
+                {pag.visibles.map((a) => (
+                  <ActivityCard key={a.id} {...cardProps(a, getTipoActividad, getCategoria, instructorNombre, geolocation.coords)} />
+                ))}
+              </div>
+              <Paginacion paginaActual={pag.paginaActual} totalPaginas={pag.totalPaginas} irAPagina={irAPagina} />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

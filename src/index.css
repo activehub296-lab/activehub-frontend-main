@@ -1,0 +1,406 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f4f7fa;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-family: Manrope, system-ui, sans-serif;
+  color: #0e2a47;
+}
+
+::selection {
+  background: #ffd9c4;
+  color: #0e2a47;
+}
+
+@keyframes ahFade {
+  from {
+    transform: translateY(8px);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes ahPop {
+  from {
+    transform: translateY(12px);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes ahPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes ahspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ah-screen {
+  animation: ahFade 0.28s ease both;
+}
+.ah-hov {
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+.ah-hov:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 34px rgba(14, 42, 71, 0.12);
+}
+.ah-btn {
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease,
+    opacity 0.16s;
+}
+.ah-btn:hover {
+  transform: translateY(-1px);
+}
+.ah-btn:active {
+  transform: translateY(0);
+}
+.ah-link {
+  transition: color 0.15s ease;
+}
+.ah-link:hover {
+  color: #ff6a2b;
+}
+.ah-row:hover {
+  background: #f7fafc;
+}
+.ah-avatar-edit,
+.ah-photo-edit {
+  outline: none;
+}
+.ah-avatar-edit .ah-avatar-overlay,
+.ah-photo-edit .ah-avatar-overlay {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.ah-avatar-edit:hover .ah-avatar-overlay,
+.ah-avatar-edit:focus-visible .ah-avatar-overlay,
+.ah-photo-edit:hover .ah-avatar-overlay,
+.ah-photo-edit:focus-visible .ah-avatar-overlay {
+  opacity: 1;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d3dce6;
+  border-radius: 99px;
+  border: 3px solid #f4f7fa;
+}
+
+/* ===== Velo sobre la foto del buscador del Home (alumno/Home.tsx) =====
+   Los azules de la marca, densos a la izquierda (fecha, saludo y buscador) y casi
+   transparentes a la derecha, donde están las personas y el sol. En pantallas angostas el
+   texto ocupa todo el ancho, así que el velo pasa a ser parejo para que se siga leyendo. */
+.ah-home-hero-velo {
+  background: linear-gradient(
+    90deg,
+    rgba(14, 42, 71, 0.95) 0%,
+    rgba(14, 42, 71, 0.86) 34%,
+    rgba(20, 58, 94, 0.5) 62%,
+    rgba(20, 58, 94, 0.18) 100%
+  );
+}
+@media (max-width: 820px) {
+  .ah-home-hero-velo {
+    background: linear-gradient(180deg, rgba(14, 42, 71, 0.84) 0%, rgba(14, 42, 71, 0.7) 100%);
+  }
+}
+
+/* ===== Velo sobre la foto del banner de Explorar (alumno/Explorar.tsx) =====
+   Mismo criterio que el del Home: denso a la izquierda, donde están el título y el buscador,
+   y más liviano a la derecha para que se vean el grupo y las pesas. El banner ocupa todo el
+   ancho, así que en pantallas grandes la zona clara queda lejos del texto. En celular, parejo. */
+.ah-explorar-hero-velo {
+  background: linear-gradient(
+    90deg,
+    rgba(14, 42, 71, 0.94) 0%,
+    rgba(14, 42, 71, 0.82) 38%,
+    rgba(20, 58, 94, 0.45) 70%,
+    rgba(20, 58, 94, 0.25) 100%
+  );
+}
+@media (max-width: 820px) {
+  .ah-explorar-hero-velo {
+    background: linear-gradient(180deg, rgba(14, 42, 71, 0.84) 0%, rgba(14, 42, 71, 0.72) 100%);
+  }
+}
+
+/* ===== Buscador del Home en pantallas angostas (alumno/Home.tsx) =====
+   En una sola fila el campo de texto quedaba reducido a una letra y "Buscar" se salía del
+   recuadro blanco. Por debajo de 560 px: el recuadro achica su relleno, el texto ocupa una
+   fila completa y debajo van "Cerca tuyo · 5 km" y "Buscar" lado a lado, separados por una
+   línea horizontal en lugar de la vertical. */
+@media (max-width: 560px) {
+  .ah-home-hero {
+    padding: 24px 18px !important;
+  }
+  .ah-buscador {
+    flex-wrap: wrap;
+  }
+  .ah-buscador-texto {
+    flex: 1 1 100% !important;
+    border-bottom: 1px solid #e7edf3;
+  }
+  .ah-buscador-separador {
+    display: none;
+  }
+}
+
+/* ===== Fila deslizable de tarjetas (components/Carrusel.tsx) =====
+   3 tarjetas visibles en escritorio (dos huecos de 20 px); el resto se recorre con las
+   flechas, el trackpad o el teclado. Scroll-snap para que siempre quede una tarjeta alineada
+   al borde. La barra de scroll se oculta: las flechas ya indican que hay más. En pantallas
+   angostas se ve una tarjeta y se asoma la siguiente, y las flechas se ocultan (se desliza). */
+.ah-carrusel {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 40px) / 3);
+  gap: 20px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  padding-bottom: 4px;
+}
+.ah-carrusel::-webkit-scrollbar {
+  display: none;
+}
+.ah-carrusel:focus-visible {
+  outline: 2px solid #2b95d6;
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+.ah-carrusel-item {
+  scroll-snap-align: start;
+  min-width: 0;
+}
+@media (max-width: 820px) {
+  .ah-carrusel {
+    grid-auto-columns: 78%;
+    gap: 14px;
+  }
+  .ah-carrusel-flecha {
+    display: none !important;
+  }
+}
+
+/* ===== Contenedor con scroll propio (p. ej. las opiniones del detalle de una actividad) =====
+   La barra se ve siempre que haya más contenido (Chrome/Edge toman el estilo global de
+   ::-webkit-scrollbar; Firefox, scrollbar-color), y el gutter estable evita que el contenido
+   salte de ancho cuando aparece. */
+.ah-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #c3cfdb transparent;
+  overscroll-behavior: contain;
+}
+.ah-scroll::-webkit-scrollbar-thumb {
+  background: #c3cfdb;
+  border-color: #fff;
+}
+
+/* ===== Barra de rango con dos manijas (components/RangoDoble.tsx) =====
+   Dos <input type="range"> superpuestos sobre la misma pista. Los inputs no reciben clicks
+   (pointer-events:none) y sus manijas sí: así cada manija se arrastra por separado. La pista y
+   el tramo elegido los dibuja el componente; acá sólo se esconde la pista nativa y se dan
+   forma a las manijas, que no se pueden estilar en línea. */
+.ah-rango input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: none;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.ah-rango input[type="range"]::-webkit-slider-runnable-track {
+  background: transparent;
+  border: none;
+}
+.ah-rango input[type="range"]::-moz-range-track {
+  background: transparent;
+  border: none;
+}
+.ah-rango input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: #fff;
+  border: 1px solid #d6dee7;
+  box-shadow: 0 1px 3px rgba(14, 42, 71, 0.18);
+  cursor: grab;
+}
+.ah-rango input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: #fff;
+  border: 1px solid #d6dee7;
+  box-shadow: 0 1px 3px rgba(14, 42, 71, 0.18);
+  cursor: grab;
+}
+.ah-rango input[type="range"]:active::-webkit-slider-thumb {
+  cursor: grabbing;
+}
+.ah-rango input[type="range"]:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid #2b95d6;
+  outline-offset: 2px;
+}
+.ah-rango input[type="range"]:focus-visible::-moz-range-thumb {
+  outline: 2px solid #2b95d6;
+  outline-offset: 2px;
+}
+
+/* ===== Responsive pass (desktop-first -> tablet/mobile) ===== */
+@media (max-width: 1024px) {
+  .ah-grid-5,
+  .ah-grid-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+@media (max-width: 820px) {
+  .ah-grid-2,
+  .ah-grid-3,
+  .ah-grid-4,
+  .ah-grid-5,
+  .ah-grid-auto,
+  .ah-grid-side,
+  .ah-grid-side-alt {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Dashboards: stack sidebar over content */
+  .ah-dash-shell {
+    flex-direction: column !important;
+  }
+  .ah-dash-sidebar {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    position: static !important;
+  }
+  .ah-dash-sidebar nav {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+  }
+
+  .ah-hero-title {
+    font-size: 36px !important;
+    line-height: 1.06 !important;
+  }
+  .ah-dash-main {
+    overflow-x: auto !important;
+  }
+}
+@media (max-width: 560px) {
+  .ah-grid-side-alt {
+    grid-template-columns: 1fr !important;
+  }
+  .ah-hero-title {
+    font-size: 30px !important;
+  }
+}
+
+/* Panel izquierdo del Login (`pages/auth/Login.tsx`, 2026-10-25). La ilustración es cuadrada y
+   trae el logo arriba a la izquierda. `.ah-login-fondo` es un cuadrado del lado del panel más
+   largo (min-width/min-height + aspect-ratio), anclado arriba a la izquierda: hace lo mismo que
+   `background-size: cover` pero deja ubicar el enlace del logo en porcentajes de la imagen. El
+   panel recorta el sobrante (`overflow:hidden`). */
+.ah-login-panel {
+  min-height: 100vh;
+}
+.ah-login-fondo {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: 100%;
+  min-height: 100%;
+  aspect-ratio: 1 / 1;
+  background: url("/login-fondo.webp") left top / 100% 100% no-repeat;
+}
+.ah-login-logo {
+  position: absolute;
+  left: 4%;
+  top: 4%;
+  width: 26%;
+  height: 7%;
+  border-radius: 10px;
+}
+.ah-login-logo:focus-visible {
+  outline: 2px solid #22d3c0;
+  outline-offset: 2px;
+}
+/* Velo para leer el texto: denso a la izquierda (donde está el texto), deja ver las figuras de
+   la derecha y oscurece abajo. */
+.ah-login-velo {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(10, 25, 45, 0.78) 0%, rgba(10, 25, 45, 0.55) 55%, rgba(10, 25, 45, 0.25) 100%),
+    linear-gradient(180deg, transparent 60%, rgba(10, 25, 45, 0.45) 100%);
+}
+@media (max-width: 820px) {
+  /* Apilado sobre el formulario: no ocupa toda la pantalla, y el texto deja lugar al logo. */
+  .ah-login-panel {
+    min-height: 0;
+    padding: 110px 24px 40px !important;
+  }
+  .ah-login-velo {
+    /* Más claro arriba, para que se vea el logo de la ilustración. */
+    background: linear-gradient(180deg, rgba(10, 25, 45, 0.3) 0%, rgba(10, 25, 45, 0.75) 32%, rgba(10, 25, 45, 0.82) 100%);
+  }
+}
+
+/* El índice del Manual (`pages/public/Manual.tsx`) es una columna pegajosa al costado del
+   texto. Apilado sobre el contenido —que es como queda cuando `ah-grid-side` colapsa a una
+   columna— seguir pegado significaría tapar media pantalla con el índice mientras se lee. */
+@media (max-width: 820px) {
+  .ah-manual-indice {
+    position: static !important;
+    max-height: none !important;
+  }
+}
+
+/* Impresión ("Imprimir / PDF" del Manual): fuera lo que solo sirve en pantalla —encabezado,
+   buscador, índice y botones—, y los fondos de las tarjetas se imprimen tal cual para que el
+   PDF no quede en blanco y negro plano. */
+@media print {
+  .ah-no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

@@ -1,0 +1,1730 @@
+/* eslint-disable react-refresh/only-export-components -- el provider y su hook viven
+   juntos a propósito: separarlos obligaría a tocar los imports de todas las pantallas y solo
+   afecta al fast refresh en desarrollo. */
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import type {
+  Actividad,
+  Categoria,
+  Clase,
+  EstadoClase,
+  EstadoDenuncia,
+  EstadoInscripcion,
+  EstadoPago,
+  EstadoUsuario,
+  NivelIntensidad,
+  RolNombre,
+  TipoActividad,
+  DatosPagoMercadoPago,
+  EstadoComprobantePenalizacion,
+  EstadoPagoPenalizacion,
+  TipoPenalizacion,
+} from "../lib/types";
+import type { DestinoNotificacion } from "../lib/notificaciones";
+import { api } from "../lib/api";
+
+/**
+ * Todo lo que expone este contexto pega contra activehub-api. Ya no queda ningún
+ * dataset mock acá: los arrays `inscripciones`/`pagos`/`penalizaciones` que vivían
+ * en localStorage se borraron cuando las últimas dos pantallas que los leían
+ * (Perfil del alumno y Reportes del admin) pasaron a `listarMisInscripciones()` y
+ * `listarPenalizaciones()`. `lib/mockData.ts` sigue existiendo **solo** por sus
+ * helpers de formato de fecha/hora, no por sus datos.
+ */
+
+
+// --- Shapes de respuesta reales de activehub-api ---------------------------
+
+interface CategoriaResp {
+  id: string;
+  nombre: string;
+}
+
+interface TipoActividadResp {
+  id: string;
+  nombre: string;
+  categoriaId: string;
+}
+
+interface ActividadCamposComunes {
+  id: string;
+  nombre: string;
+  tipoActividad: { id: string; nombre: string };
+  categoria: { id: string; nombre: string };
+  nivelIntensidad: { id: string; nombre: string };
+  /** `aceptaMercadoPago` y `mpPublicKey` solo vienen en el detalle (KAN-57). */
+  instructor: { id: string; nombre: string; apellido: string; aceptaMercadoPago?: boolean; mpPublicKey?: string | null };
+  precio: number;
+  ubicacion: string;
+  photoTint: string;
+  rating: number | null;
+  duracionMin: number;
+  latitud: number | null;
+  longitud: number | null;
+}
+
+interface ActividadListResp extends ActividadCamposComunes {
+  proximaClase: { fechaHora: string; estado: string; cuposMax: number; cuposOcupados: number } | null;
+}
+
+interface RecomendadaResp extends ActividadCamposComunes {
+  proximaClase: { fechaHora: string; estado: string; cuposMax: number; cuposOcupados: number } | null;
+  puntaje: number;
+  motivos: string[];
+}
+
+interface RecomendacionesResp {
+  sinSenales: boolean;
+  recomendadas: RecomendadaResp[];
+}
+
+/**
+ * Una actividad recomendada. `motivos` es lo que la pantalla muestra debajo de la tarjeta:
+ * una recomendación que no se puede explicar se lee como un error.
+ */
+/** Respuesta de `POST /inscripciones`: lo que importa a la pantalla es el estado real. */
+export interface ResultadoInscripcion {
+  id: string;
+  estado: EstadoInscripcion;
+  pagoId: string | null;
+}
+
+/** Estado de la vinculación con Mercado Pago. Nunca trae tokens. */
+export interface CuentaMercadoPago {
+  vinculada: boolean;
+  estado: "VINCULADA" | "DESVINCULADA" | "TOKEN_VENCIDO" | null;
+  mpUserId: string | null;
+  actualizadaEl: string | null;
+  expiraEl: string | null;
+}
+
+export interface RecomendacionAlumno {
+  actividad: Actividad;
+  /** Puntaje del motor. No se muestra; sirve para diagnosticar el orden. */
+  puntaje: number;
+  motivos: string[];
+}
+
+export interface Recomendaciones {
+  /**
+   * El alumno no declaró intereses y no tiene historial. La pantalla muestra la invitación a
+   * cargarlos **en vez de** rellenar con actividades cualquiera, que era el comportamiento
+   * viejo.
+   */
+  sinSenales: boolean;
+  recomendaciones: RecomendacionAlumno[];
+}
+
+/** Las dos señales de comportamiento que el backend no puede deducir solo (V27). */
+export type TipoInteraccion = "VISTA_ACTIVIDAD" | "BUSQUEDA";
+
+/**
+ * El informe del "Asistente de beneficios y prevenciones" del detalle de actividad, generado por
+ * el modelo de lenguaje a partir de la actividad y del perfil del alumno.
+ *
+ * <p><b>Es orientativo y no es un diagnóstico médico</b>: el backend lo genera con reglas explícitas
+ * para que no lo sea (ver `GenerarInformeActividadService`) y la pantalla lo aclara al pie. No
+ * condiciona ni bloquea la inscripción.
+ */
+export interface InformeActividad {
+  resumen: string;
+  /** Cuánto pega la actividad con lo que el alumno ya eligió. Etiqueta, no puntaje. */
+  afinidad: "Alta" | "Media" | "Baja";
+  beneficios: string[];
+  prevenciones: string[];
+  generadoEn: string;
+}
+
+interface ClaseResp {
+  id: string;
+  fechaHora: string;
+  horaFin: string;
+  estado: string;
+  cuposMax: number;
+  cuposOcupados: number;
+  /** Precio congelado de la clase (V23). Es el que se cobra, no el de la actividad. */
+  precio: number;
+}
+
+interface ClaseDetalleResp extends ClaseResp {
+  cantidadPreInscripcion: number;
+}
+
+interface ActividadDetalleResp extends ActividadCamposComunes {
+  descripcion: string;
+  imagenes: string[];
+  tienePortada: boolean;
+  /** La imagen de la galería que comparte archivo con la portada (la primera que se subió). */
+  portadaImagenId: string | null;
+  clases: ClaseDetalleResp[];
+}
+
+export interface InstructorAdmin {
+  id: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+  telefono?: string;
+  fechaNacimiento?: string;
+  createdAt: string;
+  especialidad: string;
+  aniosExperiencia?: number;
+  estadoVerificacion: "PENDIENTE" | "APROBADO" | "RECHAZADO";
+  motivoRechazo?: string;
+}
+
+export interface ClaseInstructorAdmin {
+  claseId: string;
+  actividadId: string;
+  actividadNombre: string;
+  fechaHora: string;
+  estado: EstadoClase;
+  cuposMax: number;
+  cuposOcupados: number;
+  /** Precio congelado de la clase (V23), no el actual de la actividad. */
+  precio: number;
+}
+
+export interface DocumentoInstructor {
+  id: string;
+  nombreArchivo: string;
+  tipoDocumento: string;
+  tamanioBytes: number;
+  createdAt: string;
+  /** Subido después del último rechazo: lo que el instructor mandó para corregir (2026-10-26). */
+  nuevo?: boolean;
+  /** Sólo en el listado del admin: el instructor lo quitó y queda como historial. */
+  retirado?: boolean;
+}
+
+export interface ClaseAdmin {
+  claseId: string;
+  actividadId: string;
+  actividadNombre: string;
+  fechaHora: string;
+  estado: EstadoClase;
+  cuposMax: number;
+  cuposOcupados: number;
+  /** Precio congelado de la clase (V23), no el actual de la actividad. */
+  precio: number;
+}
+
+export interface MiInscripcion {
+  id: string;
+  claseId: string;
+  claseFechaHora: string;
+  claseEstado: string;
+  actividadId: string;
+  actividadNombre: string;
+  alumnoId: string;
+  estado: EstadoInscripcion;
+  createdAt: string;
+  pagoId?: string;
+  pago?: { id: string; estado: string; monto: number; metodo: string };
+}
+
+export interface RosterAlumno {
+  inscripcionId: string;
+  alumnoId: string;
+  nombre: string;
+  apellido: string;
+  telefono?: string;
+  estado: string;
+  /** KAN-63: null si la inscripción no tiene pago. */
+  pagoEstado: EstadoPago | null;
+  pagoMetodo: string | null;
+  pagoCapturado: boolean;
+  /** Lo que recibe el instructor por este alumno: el monto menos la comisión de la plataforma. */
+  pagoNeto: number | null;
+}
+
+/** Clase propia del instructor (GET /api/instructor/clases). Incluye Finalizadas y Canceladas. */
+export interface MiClaseInstructor {
+  claseId: string;
+  actividadId: string;
+  actividadNombre: string;
+  actividadUbicacion: string;
+  fechaHora: string;
+  estado: EstadoClase;
+  cuposMax: number;
+  cuposOcupados: number;
+  /**
+   * Precio de ESTA clase, no el actual de la actividad (V23 del backend). Es lo que hace
+   * que la ganancia del Historial sea la real: si la actividad cambió de precio después,
+   * la clase ya dictada sigue valiendo lo que se cobró.
+   */
+  precio: number;
+}
+
+/** Inscripción a una clase propia del instructor (GET /api/instructor/inscripciones). */
+export interface InscripcionMiClase {
+  inscripcionId: string;
+  claseId: string;
+  actividadId: string;
+  actividadNombre: string;
+  claseFechaHora: string;
+  claseEstado: EstadoClase;
+  alumnoId: string;
+  alumnoNombre: string;
+  estado: EstadoInscripcion;
+  createdAt: string;
+  pagoEstado: EstadoPago | null;
+  pagoMonto: number | null;
+}
+
+/** Pago del alumno logueado (GET /api/alumno/pagos). */
+export interface MiPago {
+  pagoId: string;
+  inscripcionId: string;
+  claseId: string;
+  actividadId: string;
+  actividadNombre: string;
+  claseFechaHora: string;
+  claseEstado: EstadoClase;
+  inscripcionEstado: EstadoInscripcion;
+  estado: EstadoPago;
+  /** KAN-63: si Mercado Pago ya lo cobró (un `Retenido` cobrado espera el período de denuncias). */
+  capturado: boolean;
+  metodo: string;
+  monto: number;
+  createdAt: string;
+}
+
+export interface ActualizarUsuarioAdminInput {
+  nombre: string;
+  apellido: string;
+  email: string;
+  telefono?: string;
+  fechaNacimiento?: string;
+}
+
+export interface PenalizacionAdmin {
+  id: string;
+  usuarioId: string;
+  usuarioNombre: string;
+  usuarioEmail: string;
+  tipo: TipoPenalizacion;
+  motivo: string;
+  monto: number | null;
+  fechaInicio: string | null;
+  fechaFin: string | null;
+  /** Solo las suspensiones tienen vigencia; el backend ya la calcula contra la fecha de hoy. */
+  vigente: boolean;
+  denunciaId: string | null;
+  cantidadPenalizacionesUsuario: number;
+  createdAt: string;
+  /** V36, sólo multas. Null en las anteriores a V36 (no se pagan por la plataforma). */
+  estadoPago: EstadoPagoPenalizacion | null;
+  pagoAprobadoAt: string | null;
+  /** V36, sólo suspensiones: si un administrador la levantó antes de tiempo. */
+  levantadaAt: string | null;
+  motivoLevantamiento: string | null;
+  /** Del más reciente al más viejo. */
+  comprobantes: ComprobantePenalizacionAdmin[];
+}
+
+export interface ComprobantePenalizacionAdmin {
+  id: string;
+  nombreArchivo: string;
+  estado: EstadoComprobantePenalizacion;
+  motivoInvalidez: string | null;
+  createdAt: string;
+  revisadoAt: string | null;
+}
+
+/** "Pago de penalización" del instructor (`GET /api/instructor/sanciones`, V36). */
+export interface MisSanciones {
+  multaPendiente: boolean;
+  suspendidoHasta: string | null;
+  /** De la configuración del servidor. Cada dato puede venir en null si no se cargó. */
+  transferencia: { alias: string | null; cbu: string | null; titular: string | null };
+  sanciones: MiSancion[];
+}
+
+export interface MiSancion {
+  id: string;
+  tipo: TipoPenalizacion;
+  motivo: string;
+  monto: number | null;
+  fechaInicio: string | null;
+  fechaFin: string | null;
+  createdAt: string;
+  estadoPago: EstadoPagoPenalizacion | null;
+  /** Sólo suspensiones: si rige hoy. */
+  vigente: boolean;
+  levantadaAt: string | null;
+  motivoLevantamiento: string | null;
+  comprobantes: { id: string; nombreArchivo: string; estado: EstadoComprobantePenalizacion; motivoInvalidez: string | null; createdAt: string }[];
+}
+
+export interface CrearPenalizacionInput {
+  usuarioId: string;
+  /** Se pueden aplicar los dos a la vez: el backend guarda una penalización por tipo. */
+  tipos: TipoPenalizacion[];
+  motivo: string;
+  monto?: number;
+  fechaInicio?: string;
+  fechaFin?: string;
+}
+
+/** Datos extra que pide "Suspender al instructor" al resolver una denuncia. */
+export interface SancionSuspension {
+  /**
+   * SUSPENDER: puede ser 0, y en ese caso la sanción es solo la suspensión, sin multa.
+   * PENALIZAR: obligatorio desde V36 (el instructor tiene que saber cuánto pagar).
+   */
+  montoMulta: number;
+  /** Sólo SUSPENDER. Mínimo 15 días (lo valida también el backend). */
+  diasSuspension?: number;
+}
+
+export interface RosterClase {
+  claseId: string;
+  /** Precio congelado de la clase (V23): es lo que pagó cada uno de estos alumnos. */
+  precio: number;
+  cuposMax: number;
+  cuposOcupados: number;
+  cuposLibres: number;
+  cantidadInscripto: number;
+  cantidadPagoPendiente: number;
+  cantidadPreInscripcion: number;
+  alumnos: RosterAlumno[];
+}
+
+/**
+ * Reporte del formulario "Reportar un problema" de `/ayuda`, visto desde la bandeja del admin
+ * (GET /api/admin/soporte/reportes).
+ *
+ * `autorNombre`/`autorId` vienen en **null** cuando lo mandó un visitante sin cuenta: la
+ * pantalla pública no exige sesión a propósito, así que el caso anónimo es normal. La etiqueta
+ * ("Sin cuenta") la pone la pantalla; el backend manda null.
+ */
+export interface ReporteSoporteAdmin {
+  id: string;
+  email: string;
+  asunto: string;
+  detalle: string;
+  estado: "Abierto" | "Cerrado";
+  autorNombre: string | null;
+  autorId: string | null;
+  respuesta: string | null;
+  cerradoPorNombre: string | null;
+  cerradoAt: string | null;
+  createdAt: string;
+}
+
+export interface CrearReporteSoporteInput {
+  email: string;
+  asunto: string;
+  detalle: string;
+}
+
+export interface ReseniaActividad {
+  id: string;
+  claseId: string;
+  alumno: { id: string; nombre: string; apellido: string };
+  puntaje: number;
+  /** Opcional: una reseña puede ser solo estrellas. */
+  comentario: string | null;
+  createdAt: string;
+  /**
+   * Respuesta pública del instructor (E2I-HU11 crit. 4). Null mientras no haya respondido.
+   * El detalle de la actividad es el único lugar donde el alumno la lee: sin esto, el
+   * instructor respondía y la respuesta no aparecía en ningún lado más que su propia pantalla.
+   */
+  respuestaInstructor: string | null;
+  respuestaInstructorAt: string | null;
+}
+
+export interface MiResenia {
+  id: string;
+  claseId: string;
+  claseFechaHora: string;
+  actividadId: string;
+  actividadNombre: string;
+  instructorNombre: string;
+  puntaje: number;
+  /** Opcional: una reseña puede ser solo estrellas. */
+  comentario: string | null;
+  /** Bajada por un administrador: sigue en la lista, pero ya no se ve en la actividad. */
+  oculta: boolean;
+  /** La respuesta del instructor, si contestó. Es a lo que lleva `RESENIA_RESPONDIDA`. */
+  respuestaInstructor: string | null;
+  respuestaInstructorAt: string | null;
+  createdAt: string;
+}
+
+export interface ReseniaInstructor {
+  id: string;
+  claseId: string;
+  claseFechaHora: string;
+  actividadId: string;
+  actividadNombre: string;
+  alumno: { id: string; nombre: string; apellido: string };
+  puntaje: number;
+  /** Opcional: una reseña puede ser solo estrellas. */
+  comentario: string | null;
+  respuestaInstructor?: string;
+  respuestaInstructorAt?: string;
+  /** El instructor ya la denunció y la denuncia sigue abierta. */
+  denunciada: boolean;
+  oculta: boolean;
+  createdAt: string;
+}
+
+/**
+ * Reseña publicada (GET /api/admin/resenas/publicadas). Toda reseña se publica al crearse, así
+ * que es el único listado del admin; incluye `oculta` porque tiene que ver también lo que bajó.
+ */
+export interface ReseniaPublicada {
+  id: string;
+  claseId: string;
+  claseFechaHora: string;
+  actividadId: string;
+  actividadNombre: string;
+  alumno: { id: string; nombre: string; apellido: string };
+  puntaje: number;
+  /** Opcional: una reseña puede ser solo estrellas. */
+  comentario: string | null;
+  oculta: boolean;
+  createdAt: string;
+}
+
+
+/** E4Ad-HU08: la matriz de "Roles y permisos" (GET /api/admin/roles). */
+export interface RolAdmin {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  /** Los tres del sistema (ALUMNO/INSTRUCTOR/ADMIN) son los únicos que el backend sabe asignar. */
+  sistema: boolean;
+  usuarios: number;
+  /** Claves habilitadas para este rol. */
+  permisos: string[];
+}
+
+export interface PermisoAdmin {
+  id: string;
+  clave: string;
+  modulo: string;
+  accion: string;
+  /** Sin él el Administrador se queda sin gobierno: el backend rechaza quitarlo. */
+  critico: boolean;
+  /**
+   * `false` = permiso implícito (`Permiso.IMPLICITOS` en el backend): lo tienen todos los
+   * roles y no se puede apagar, así que la pantalla no lo ofrece como checkbox.
+   */
+  configurable: boolean;
+}
+
+export interface RolesPermisos {
+  roles: RolAdmin[];
+  permisos: PermisoAdmin[];
+}
+
+/** Acciones válidas al resolver. OCULTAR_RESENIA solo aplica a denuncias de reseña. */
+export type AccionResolucion = "REINTEGRAR" | "SUSPENDER" | "PENALIZAR" | "DESESTIMAR" | "OCULTAR_RESENIA";
+
+export interface Notificacion {
+  id: string;
+  tipo: string;
+  mensaje: string;
+  /** El registro que originó el aviso. Su significado depende del tipo: sirve para trazar. */
+  entidadId: string | null;
+  /**
+   * A qué pantalla lleva el click, ya resuelto por el backend (`"NINGUNO"` = sin link). El
+   * mapeo destino → ruta, que depende de los permisos de quien mira, vive en
+   * `lib/notificaciones.ts`.
+   */
+  destinoTipo: DestinoNotificacion;
+  destinoId: string | null;
+  leida: boolean;
+  createdAt: string;
+}
+
+export interface InscripcionAdmin {
+  id: string;
+  claseId: string;
+  actividadId: string;
+  alumnoId: string;
+  estado: EstadoInscripcion;
+  createdAt: string;
+  pago: { id: string; estado: string; monto: number; metodo: string } | null;
+}
+
+export interface AuditoriaEntry {
+  id: string;
+  actorId: string | null;
+  actorNombre: string;
+  actorRol: RolNombre | null;
+  accion: string;
+  entidad: string;
+  /** Nullable en la base (`audit_log.entidad_id`): hay eventos que no apuntan a una fila. */
+  entidadId: string | null;
+  metadata: string | null;
+  /**
+   * La misma fila contada en castellano, armada por el backend (`DescripcionAuditoria`). Es lo
+   * que se muestra en la columna "Detalle": antes ahí iba `entidadId + metadata`, o sea un UUID
+   * seguido de una clave técnica.
+   */
+  descripcion: string;
+  createdAt: string;
+}
+
+export type ResolucionDenuncia = "REINTEGRAR" | "SUSPENDER" | "PENALIZAR" | "DESESTIMAR" | "OCULTAR_RESENIA";
+
+export interface MiDenuncia {
+  id: string;
+  /** "CLASE" (la hizo un alumno) o "RESENIA" (la hizo el instructor). */
+  tipo: "CLASE" | "RESENIA";
+  claseId: string;
+  claseFechaHora: string;
+  actividadId: string;
+  actividadNombre: string;
+  motivo: string;
+  estado: EstadoDenuncia;
+  /** Cómo la cerró el admin. Null mientras siga abierta (E3A-HU11 criterios 2 y 7). */
+  resolucion: ResolucionDenuncia | null;
+  detalle: string | null;
+  createdAt: string;
+}
+
+export interface UsuarioAdmin {
+  id: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+  telefono?: string;
+  /** Nombre del rol: los tres del sistema o uno creado por el admin. */
+  rol: string;
+  estado: EstadoUsuario;
+  cantidadPenalizaciones: number;
+  createdAt: string;
+  /** Si su rol puede dictar clases. Solo a estos usuarios se les puede aplicar una penalización. */
+  puedeDarClases: boolean;
+}
+
+interface Persona {
+  id: string;
+  nombre: string;
+  apellido: string;
+}
+
+export interface DenunciaAdmin {
+  id: string;
+  /** Decide qué acciones de resolución ofrece la pantalla. */
+  tipo: "CLASE" | "RESENIA";
+  claseId: string;
+  claseFechaHora: string;
+  actividadId: string;
+  actividadNombre: string;
+  /** Null en las denuncias sobre una reseña: el autor viaja dentro de `resenia`. */
+  alumno: Persona | null;
+  instructor: Persona;
+  denunciante: Persona;
+  resenia: { id: string; puntaje: number; comentario: string | null; autor: Persona; oculta: boolean } | null;
+  motivo: string;
+  estado: EstadoDenuncia;
+  resolucion: ResolucionDenuncia | null;
+  detalle: string | null;
+  pago: { id: string; estado: string; monto: number; metodo: string } | null;
+  createdAt: string;
+}
+
+function aplanarActividad(r: ActividadCamposComunes, proximaClase?: ActividadListResp["proximaClase"]): Actividad {
+  return {
+    id: r.id,
+    nombre: r.nombre,
+    descripcion: "",
+    tipoActividadId: r.tipoActividad.id,
+    nivelIntensidadId: r.nivelIntensidad.id,
+    nivelIntensidad: r.nivelIntensidad.nombre,
+    instructorId: r.instructor.id,
+    precio: Number(r.precio),
+    ubicacion: r.ubicacion,
+    photoTint: r.photoTint,
+    rating: Number(r.rating ?? 0),
+    duracionMin: r.duracionMin,
+    imagenes: "imagenes" in r ? (r as ActividadDetalleResp).imagenes : undefined,
+    lat: r.latitud ?? undefined,
+    lng: r.longitud ?? undefined,
+    proximaClase: proximaClase
+      ? {
+          fechaHora: proximaClase.fechaHora,
+          estado: proximaClase.estado as EstadoClase,
+          cuposMax: proximaClase.cuposMax,
+          cuposOcupados: proximaClase.cuposOcupados,
+        }
+      : undefined,
+  };
+}
+
+function aplanarClase(r: ClaseResp | ClaseDetalleResp): Clase {
+  return {
+    id: r.id,
+    actividadId: "",
+    fechaHora: r.fechaHora,
+    horaFin: r.horaFin,
+    estado: r.estado as Clase["estado"],
+    cuposMax: r.cuposMax,
+    cuposOcupados: r.cuposOcupados,
+    cantidadPreInscripcion: "cantidadPreInscripcion" in r ? r.cantidadPreInscripcion : undefined,
+    precio: Number(r.precio),
+  };
+}
+
+interface ActividadInput {
+  nombre: string;
+  descripcion: string;
+  tipoActividadId: string;
+  nivelIntensidadId: string;
+  precio: number;
+  ubicacion: string;
+  photoTint: string;
+  /** Duración de una clase en minutos. El cupo se define por clase, no acá. */
+  duracionMin: number;
+  lat?: number;
+  lng?: number;
+}
+
+interface NivelIntensidadInput {
+  nombre: string;
+  descripcion: string;
+}
+
+interface ClaseInput {
+  fechaHora: string;
+  // Sin `horaFin`: la calcula el backend sumándole `actividad.duracionMin` al inicio. La
+  // duración es un dato de la actividad, así que pedirla otra vez por clase era el mismo
+  // dato dos veces — y permitía una clase de 90 min en una actividad que promete 60.
+  cuposMax: number;
+  repetirSemanalmente?: boolean;
+  /** Fecha de corte de la repetición (YYYY-MM-DD). Sin valor = sin corte. */
+  repetirHasta?: string;
+}
+
+interface TipoActividadInput {
+  nombre: string;
+  categoriaId: string;
+}
+
+interface CategoriaInput {
+  nombre: string;
+}
+
+interface DataContextValue {
+  // catálogo real
+  categorias: Categoria[];
+  nivelesIntensidad: NivelIntensidad[];
+  getNivelIntensidad: (id: string) => NivelIntensidad | undefined;
+  tiposActividad: TipoActividad[];
+  actividades: Actividad[];
+  clases: Clase[];
+  instructorNombre: Record<string, string>;
+  cargandoCatalogo: boolean;
+  /** La carga del catálogo falló: las pantallas muestran "Reintentar" en vez de un vacío que miente. */
+  errorCatalogo: boolean;
+  refrescarCatalogo: () => Promise<void>;
+
+  getActividad: (id: string) => Actividad | undefined;
+  getTipoActividad: (id: string) => TipoActividad | undefined;
+  getCategoria: (id: string) => Categoria | undefined;
+  getClasesDeActividad: (actividadId: string) => Clase[];
+  cargarDetalleActividad: (id: string) => Promise<ActividadDetalleResp>;
+
+  crearActividad: (input: ActividadInput) => Promise<Actividad>;
+  actualizarActividad: (id: string, input: ActividadInput) => Promise<Actividad>;
+  eliminarActividad: (id: string) => Promise<void>;
+
+  crearClase: (actividadId: string, input: ClaseInput) => Promise<Clase>;
+  actualizarClase: (id: string, actividadId: string, input: ClaseInput) => Promise<Clase>;
+  eliminarClase: (id: string, actividadId: string) => Promise<void>;
+  cancelarClase: (id: string) => Promise<void>;
+  notificarAusenciaProfesor: (claseId: string, mensaje: string) => Promise<void>;
+  listarNotificaciones: () => Promise<Notificacion[]>;
+  marcarNotificacionesLeidas: () => Promise<void>;
+
+  crearTipoActividad: (input: TipoActividadInput) => Promise<TipoActividad>;
+  actualizarTipoActividad: (id: string, input: TipoActividadInput) => Promise<TipoActividad>;
+  eliminarTipoActividad: (id: string) => Promise<void>;
+
+  crearNivelIntensidad: (input: NivelIntensidadInput) => Promise<void>;
+  actualizarNivelIntensidad: (id: string, input: NivelIntensidadInput) => Promise<void>;
+  eliminarNivelIntensidad: (id: string) => Promise<void>;
+  crearCategoria: (input: CategoriaInput) => Promise<Categoria>;
+  actualizarCategoria: (id: string, input: CategoriaInput) => Promise<Categoria>;
+  eliminarCategoria: (id: string) => Promise<void>;
+
+  // inscripción / pago real
+  /**
+   * Devuelve el estado REAL en que quedó la inscripción según el backend (null en una
+   * preinscripción). Con Mercado Pago no siempre es "Inscripto": si MP deja el pago en revisión
+   * vuelve "PagoPendiente" (KAN-58), y la pantalla no puede dar por aprobado lo que no lo está.
+   */
+  inscribirse: (
+    clase: Clase,
+    alumnoId: string,
+    metodo?: "Mercado Pago" | "Efectivo",
+    datosPago?: DatosPagoMercadoPago,
+  ) => Promise<ResultadoInscripcion | null>;
+  cancelarInscripcion: (id: string) => Promise<void>;
+  confirmarCobroEfectivo: (inscripcionId: string) => Promise<void>;
+  // Mercado Pago del instructor (OAuth, KAN-54)
+  obtenerCuentaMercadoPago: () => Promise<CuentaMercadoPago>;
+  iniciarVinculacionMercadoPago: () => Promise<string>;
+  desvincularMercadoPago: () => Promise<void>;
+  listarMisInscripciones: (estado?: EstadoInscripcion) => Promise<MiInscripcion[]>;
+  listarRosterClase: (claseId: string) => Promise<RosterClase>;
+  listarMisClases: () => Promise<MiClaseInstructor[]>;
+  listarInscripcionesMisClases: () => Promise<InscripcionMiClase[]>;
+
+  // validación de instructores (admin, real)
+  listarInstructores: (estado?: "PENDIENTE" | "APROBADO" | "RECHAZADO") => Promise<InstructorAdmin[]>;
+  obtenerInstructor: (id: string) => Promise<InstructorAdmin>;
+  listarClasesInstructor: (id: string) => Promise<ClaseInstructorAdmin[]>;
+  listarClasesAdmin: () => Promise<ClaseAdmin[]>;
+  subirDocumento: (archivo: File) => Promise<DocumentoInstructor>;
+  /** La documentación propia del instructor, sin las que retiró (2026-10-26). */
+  listarMisDocumentos: () => Promise<DocumentoInstructor[]>;
+  verMiDocumento: (documentoId: string) => Promise<void>;
+  retirarMiDocumento: (documentoId: string) => Promise<void>;
+  listarDocumentosInstructor: (instructorId: string) => Promise<DocumentoInstructor[]>;
+  verDocumentoInstructor: (instructorId: string, documentoId: string) => Promise<void>;
+  aprobarInstructor: (id: string) => Promise<void>;
+  /** El motivo es obligatorio (2026-10-26): es lo que lee el instructor. */
+  rechazarInstructor: (id: string, motivo: string) => Promise<void>;
+  subirFotoPerfil: (archivo: File) => Promise<{ usuarioId: string }>;
+  subirFotoActividad: (actividadId: string, archivo: File) => Promise<{ actividadId: string }>;
+
+  // reseñas real
+  /** Publica en el acto: una reseña no pasa por moderación ni se edita o elimina después. */
+  crearResenia: (claseId: string, puntaje: number, comentario: string) => Promise<void>;
+  listarResenasActividad: (actividadId: string) => Promise<ReseniaActividad[]>;
+  listarMisResenas: () => Promise<MiResenia[]>;
+  listarResenasInstructor: () => Promise<ReseniaInstructor[]>;
+  listarResenasPublicadas: () => Promise<ReseniaPublicada[]>;
+  /** Baja una reseña ya publicada. El motivo es obligatorio: queda en auditoría. */
+  ocultarResenia: (id: string, motivo: string) => Promise<void>;
+
+  // denuncias real
+  crearDenuncia: (claseId: string, motivo: string) => Promise<void>;
+  listarMisDenuncias: () => Promise<MiDenuncia[]>;
+  listarDenunciasAdmin: () => Promise<DenunciaAdmin[]>;
+  /** `detalle`: texto que el denunciante ve junto a la resolución (E3A-HU11 criterio 7). */
+  resolverDenuncia: (id: string, accion: AccionResolucion, detalle?: string, sancion?: SancionSuspension) => Promise<void>;
+  tomarDenuncia: (id: string) => Promise<void>;
+  listarMisPagos: () => Promise<MiPago[]>;
+  /**
+   * Las recomendaciones del alumno logueado, ya puntuadas y ordenadas por el backend.
+   *
+   * <p>`coords` es opcional: sin permiso de ubicación la cercanía no participa del puntaje,
+   * en vez de inventar una distancia. El orden lo decide el motor — **no reordenar acá**.
+   */
+  listarRecomendaciones: (
+    coords?: { lat: number; lng: number } | null,
+    limite?: number,
+  ) => Promise<Recomendaciones>;
+  /**
+   * Registra una señal de comportamiento. **Nunca falla hacia la pantalla**: es telemetría de
+   * producto y un error acá no puede romper una navegación ni una búsqueda.
+   */
+  registrarInteraccion: (
+    tipo: TipoInteraccion,
+    datos: { actividadId?: string; termino?: string },
+  ) => Promise<void>;
+  /**
+   * Pide el informe de beneficios y prevenciones de una actividad para el alumno logueado.
+   *
+   * <p>`claseId` es opcional y sirve para que el informe hable de la fecha y el horario que el
+   * alumno está mirando; sin ella el backend usa la próxima clase. **Nada del perfil del alumno se
+   * manda desde acá**: sale del token y de la base, para que nadie pueda pedir un informe con datos
+   * de salud inventados.
+   *
+   * <p>Rechaza con `ApiError` 503 `IA_NO_DISPONIBLE` cuando no hay modelo configurado o el proveedor
+   * no responde. La pantalla lo trata cayendo a sus textos por nivel de intensidad.
+   */
+  generarInformeActividad: (actividadId: string, claseId?: string) => Promise<InformeActividad>;
+  actualizarUsuarioAdmin: (id: string, input: ActualizarUsuarioAdminInput) => Promise<void>;
+  responderResenia: (
+    id: string,
+    respuesta: string,
+  ) => Promise<{ id: string; respuestaInstructor: string; respuestaInstructorAt: string }>;
+  denunciarResenia: (id: string, motivo: string) => Promise<void>;
+  agregarImagenActividad: (
+    actividadId: string,
+    archivo: File,
+  ) => Promise<{ id: string; actividadId: string; orden: number }>;
+  eliminarImagenActividad: (actividadId: string, imagenId: string) => Promise<void>;
+  listarPenalizaciones: () => Promise<PenalizacionAdmin[]>;
+  // V36: pago de multas con comprobante y levantar una suspensión
+  listarMisSanciones: () => Promise<MisSanciones>;
+  enviarComprobantePenalizacion: (penalizacionId: string, archivo: File) => Promise<void>;
+  verComprobantePenalizacion: (comprobanteId: string) => Promise<void>;
+  desbloquearInstructorPenalizacion: (penalizacionId: string) => Promise<{ suspendidoHasta: string | null }>;
+  invalidarComprobantePenalizacion: (penalizacionId: string, motivo: string) => Promise<void>;
+  levantarSuspension: (penalizacionId: string, motivo: string) => Promise<{ multaPendiente: boolean }>;
+  listarRolesPermisos: () => Promise<RolesPermisos>;
+  /** Cambia el rol de una cuenta, incluidos los roles creados por el admin. */
+  asignarRolUsuario: (usuarioId: string, rolId: string) => Promise<void>;
+  actualizarPermisosRol: (rolId: string, permisos: string[]) => Promise<void>;
+  crearRol: (nombre: string, descripcion?: string) => Promise<RolAdmin>;
+  crearPenalizacion: (input: CrearPenalizacionInput) => Promise<void>;
+
+  // gestión de usuarios real
+  listarUsuariosAdmin: () => Promise<UsuarioAdmin[]>;
+  actualizarEstadoUsuario: (id: string, estado: EstadoUsuario) => Promise<void>;
+
+  // auditoría real
+  listarAuditoria: () => Promise<AuditoriaEntry[]>;
+
+  // inscripciones/pagos de la plataforma (admin) real
+  listarInscripcionesAdmin: () => Promise<InscripcionAdmin[]>;
+
+  // soporte (E: "Reportar un problema" de /ayuda)
+  /** Endpoint PÚBLICO: funciona con o sin sesión. Ver `SecurityConfig` del backend. */
+  crearReporteSoporte: (input: CrearReporteSoporteInput) => Promise<void>;
+  listarReportesSoporte: () => Promise<ReporteSoporteAdmin[]>;
+  /** `respuesta` es opcional: se puede cerrar sin escribirle nada a quien lo mandó. */
+  cerrarReporteSoporte: (id: string, respuesta?: string) => Promise<void>;
+
+  // favoritos reales
+  listarMisFavoritos: () => Promise<string[]>;
+  agregarFavorito: (actividadId: string) => Promise<void>;
+  quitarFavorito: (actividadId: string) => Promise<void>;
+
+}
+
+const DataContext = createContext<DataContextValue | null>(null);
+
+export function DataProvider({ children }: { children: ReactNode }) {
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [nivelesIntensidad, setNivelesIntensidad] = useState<NivelIntensidad[]>([]);
+  const [tiposActividad, setTiposActividad] = useState<TipoActividad[]>([]);
+  const [actividades, setActividades] = useState<Actividad[]>([]);
+  const [clases, setClases] = useState<Clase[]>([]);
+  const [instructorNombre, setInstructorNombre] = useState<Record<string, string>>({});
+  const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
+  const [errorCatalogo, setErrorCatalogo] = useState(false);
+
+  const refrescarCatalogo = useCallback(() => {
+    return Promise.all([
+      api.get<CategoriaResp[]>("/api/categorias"),
+      api.get<TipoActividadResp[]>("/api/tipos-actividad"),
+      api.get<NivelIntensidad[]>("/api/niveles-intensidad"),
+      api.get<ActividadListResp[]>("/api/actividades"),
+    ])
+      .then(([cats, tipos, niveles, acts]) => {
+        setCategorias(cats);
+        setTiposActividad(tipos);
+        setNivelesIntensidad(niveles);
+        setActividades((prev) => {
+          const previas = new Map(prev.map((a) => [a.id, a]));
+          return acts.map((r) => {
+            const anterior = previas.get(r.id);
+            const plano = aplanarActividad(r, r.proximaClase ?? undefined);
+            return anterior ? { ...plano, descripcion: anterior.descripcion } : plano;
+          });
+        });
+        const nombres: Record<string, string> = {};
+        for (const a of acts) nombres[a.instructor.id] = `${a.instructor.nombre} ${a.instructor.apellido}`;
+        setInstructorNombre(nombres);
+        setErrorCatalogo(false);
+      })
+      .catch(() => {
+        // Sin esto la excepción quedaba sin atrapar y el catálogo vacío se veía igual que
+        // "no hay actividades publicadas".
+        setErrorCatalogo(true);
+      })
+      .finally(() => setCargandoCatalogo(false));
+  }, []);
+
+  useEffect(() => {
+    refrescarCatalogo();
+  }, [refrescarCatalogo]);
+
+  const getActividad = useCallback((id: string) => actividades.find((a) => a.id === id), [actividades]);
+  const getTipoActividad = useCallback((id: string) => tiposActividad.find((t) => t.id === id), [tiposActividad]);
+  const getCategoria = useCallback((id: string) => categorias.find((c) => c.id === id), [categorias]);
+  const getNivelIntensidad = useCallback(
+    (id: string) => nivelesIntensidad.find((n) => n.id === id),
+    [nivelesIntensidad],
+  );
+  const getClasesDeActividad = useCallback(
+    (actividadId: string) => clases.filter((c) => c.actividadId === actividadId),
+    [clases],
+  );
+
+  const cargarDetalleActividad = useCallback(async (id: string) => {
+    const r = await api.get<ActividadDetalleResp>(`/api/actividades/${id}`);
+    setActividades((prev) => {
+      const anterior = prev.find((a) => a.id === id);
+      const plano: Actividad = {
+        ...aplanarActividad(r, anterior?.proximaClase),
+        descripcion: r.descripcion,
+        tienePortada: r.tienePortada,
+        portadaImagenId: r.portadaImagenId ?? null,
+        aceptaMercadoPago: r.instructor.aceptaMercadoPago === true,
+        mpPublicKey: r.instructor.mpPublicKey ?? null,
+      };
+      const existe = prev.some((a) => a.id === id);
+      return existe ? prev.map((a) => (a.id === id ? plano : a)) : [...prev, plano];
+    });
+    setClases((prev) => {
+      const propias = r.clases.map((c) => ({ ...aplanarClase(c), actividadId: id }));
+      const otras = prev.filter((c) => c.actividadId !== id);
+      return [...otras, ...propias];
+    });
+    setInstructorNombre((prev) => ({ ...prev, [r.instructor.id]: `${r.instructor.nombre} ${r.instructor.apellido}` }));
+    return r;
+  }, []);
+
+  const soloCamposActividad = (input: ActividadInput) => ({
+    nombre: input.nombre,
+    descripcion: input.descripcion,
+    tipoActividadId: input.tipoActividadId,
+    nivelIntensidadId: input.nivelIntensidadId,
+    precio: input.precio,
+    ubicacion: input.ubicacion,
+    photoTint: input.photoTint,
+    duracionMin: input.duracionMin,
+    latitud: input.lat ?? null,
+    longitud: input.lng ?? null,
+  });
+
+  const crearActividad = useCallback(async (input: ActividadInput) => {
+    const r = await api.post<ActividadCamposComunes & { descripcion: string }>(
+      "/api/instructor/actividades",
+      soloCamposActividad(input),
+    );
+    const nueva: Actividad = { ...aplanarActividad(r), descripcion: input.descripcion };
+    setActividades((prev) => [...prev, nueva]);
+    return nueva;
+  }, []);
+
+  const actualizarActividad = useCallback(async (id: string, input: ActividadInput) => {
+    const r = await api.put<ActividadCamposComunes & { descripcion: string }>(
+      `/api/instructor/actividades/${id}`,
+      soloCamposActividad(input),
+    );
+    const actualizada: Actividad = { ...aplanarActividad(r), descripcion: input.descripcion };
+    setActividades((prev) => prev.map((a) => (a.id === id ? actualizada : a)));
+    return actualizada;
+  }, []);
+
+  const eliminarActividad = useCallback(async (id: string) => {
+    await api.delete(`/api/instructor/actividades/${id}`);
+    setActividades((prev) => prev.filter((a) => a.id !== id));
+    setClases((prev) => prev.filter((c) => c.actividadId !== id));
+  }, []);
+
+  const crearClase = useCallback(async (actividadId: string, input: ClaseInput) => {
+    const r = await api.post<ClaseResp>(`/api/instructor/actividades/${actividadId}/clases`, input);
+    const nueva: Clase = { ...aplanarClase(r), actividadId };
+    setClases((prev) => [...prev, nueva]);
+    return nueva;
+  }, []);
+
+  const actualizarClase = useCallback(async (id: string, actividadId: string, input: ClaseInput) => {
+    const r = await api.put<ClaseResp>(`/api/instructor/clases/${id}`, input);
+    const actualizada: Clase = { ...aplanarClase(r), actividadId };
+    setClases((prev) => prev.map((c) => (c.id === id ? actualizada : c)));
+    return actualizada;
+  }, []);
+
+  const eliminarClase = useCallback(async (id: string, actividadId: string) => {
+    await api.delete(`/api/instructor/clases/${id}`);
+    setClases((prev) => prev.filter((c) => c.id !== id));
+    void actividadId;
+  }, []);
+
+  const cancelarClase = useCallback(async (id: string) => {
+    await api.post(`/api/instructor/clases/${id}/cancelar`);
+    setClases((prev) => prev.map((c) => (c.id === id ? { ...c, estado: "Cancelada" } : c)));
+  }, []);
+
+  const notificarAusenciaProfesor = useCallback(async (claseId: string, mensaje: string) => {
+    await api.post(`/api/instructor/clases/${claseId}/notificar-ausencia`, { mensaje });
+    setClases((prev) => prev.map((c) => (c.id === claseId ? { ...c, estado: "Cancelada" } : c)));
+  }, []);
+
+  const listarNotificaciones = useCallback(async () => {
+    return api.get<Notificacion[]>("/api/notificaciones");
+  }, []);
+
+  const marcarNotificacionesLeidas = useCallback(async () => {
+    await api.post("/api/notificaciones/marcar-leidas");
+  }, []);
+
+  const crearTipoActividad = useCallback(async (input: TipoActividadInput) => {
+    const nuevo = await api.post<TipoActividadResp>("/api/admin/tipos-actividad", input);
+    setTiposActividad((prev) => [...prev, nuevo]);
+    return nuevo;
+  }, []);
+
+  const actualizarTipoActividad = useCallback(async (id: string, input: TipoActividadInput) => {
+    const actualizado = await api.put<TipoActividadResp>(`/api/admin/tipos-actividad/${id}`, input);
+    setTiposActividad((prev) => prev.map((t) => (t.id === id ? actualizado : t)));
+    return actualizado;
+  }, []);
+
+  const eliminarTipoActividad = useCallback(async (id: string) => {
+    await api.delete(`/api/admin/tipos-actividad/${id}`);
+    setTiposActividad((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const crearCategoria = useCallback(async (input: CategoriaInput) => {
+    const nueva = await api.post<CategoriaResp>("/api/admin/categorias", input);
+    setCategorias((prev) => [...prev, nueva]);
+    return nueva;
+  }, []);
+
+  const actualizarCategoria = useCallback(async (id: string, input: CategoriaInput) => {
+    const actualizada = await api.put<CategoriaResp>(`/api/admin/categorias/${id}`, input);
+    setCategorias((prev) => prev.map((c) => (c.id === id ? actualizada : c)));
+    return actualizada;
+  }, []);
+
+  // La baja arrastra los tipos de la categoría (el backend los da de baja en cascada), así
+  // que hay que sacarlos también del estado local: si no, quedan tipos huérfanos apuntando a
+  // una categoría que ya no existe y la tabla los muestra con categoría "—".
+  const eliminarCategoria = useCallback(async (id: string) => {
+    await api.delete(`/api/admin/categorias/${id}`);
+    setCategorias((prev) => prev.filter((c) => c.id !== id));
+    setTiposActividad((prev) => prev.filter((t) => t.categoriaId !== id));
+  }, []);
+
+  // E4Ad-HU05. Los niveles vuelven a leerse enteros despues de cada alta/baja porque la
+  // respuesta del backend no trae el contador de actividades y la tabla lo muestra.
+  const crearNivelIntensidad = useCallback(async (input: NivelIntensidadInput) => {
+    await api.post("/api/admin/niveles-intensidad", input);
+    setNivelesIntensidad(await api.get<NivelIntensidad[]>("/api/niveles-intensidad"));
+  }, []);
+
+  const actualizarNivelIntensidad = useCallback(async (id: string, input: NivelIntensidadInput) => {
+    await api.put(`/api/admin/niveles-intensidad/${id}`, input);
+    setNivelesIntensidad(await api.get<NivelIntensidad[]>("/api/niveles-intensidad"));
+  }, []);
+
+  const eliminarNivelIntensidad = useCallback(async (id: string) => {
+    await api.delete(`/api/admin/niveles-intensidad/${id}`);
+    setNivelesIntensidad((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  const inscribirse = useCallback(
+    async (
+      clase: Clase,
+      _alumnoId: string,
+      metodo?: "Mercado Pago" | "Efectivo",
+      datosPago?: DatosPagoMercadoPago,
+    ) => {
+      void _alumnoId;
+      let resultado: ResultadoInscripcion | null = null;
+      if (!metodo) {
+        await api.post(`/api/alumno/clases/${clase.id}/preinscripciones`);
+      } else {
+        const body = datosPago ? { metodoPago: metodo, datosPago } : { metodoPago: metodo };
+        resultado = await api.post<ResultadoInscripcion>(`/api/alumno/clases/${clase.id}/inscripciones`, body);
+      }
+      setClases((prev) => prev.map((c) => (c.id === clase.id ? { ...c, cuposOcupados: c.cuposOcupados + (metodo ? 1 : 0) } : c)));
+      return resultado;
+    },
+    [],
+  );
+
+  const cancelarInscripcion = useCallback(async (id: string) => {
+    await api.delete(`/api/alumno/inscripciones/${id}`);
+  }, []);
+
+  const confirmarCobroEfectivo = useCallback(async (inscripcionId: string) => {
+    await api.post(`/api/instructor/inscripciones/${inscripcionId}/confirmar-cobro`);
+  }, []);
+
+  const obtenerCuentaMercadoPago = useCallback(
+    () => api.get<CuentaMercadoPago>("/api/instructor/mercadopago"),
+    [],
+  );
+
+  /** URL de la pantalla de consentimiento de Mercado Pago (lleva el state firmado del instructor). */
+  const iniciarVinculacionMercadoPago = useCallback(async () => {
+    const { url } = await api.get<{ url: string }>("/api/instructor/mercadopago/vinculo");
+    return url;
+  }, []);
+
+  /**
+   * Desvincula la cuenta (KAN-55): 204 sin cuerpo. Con pagos de MP retenidos o en revisión el
+   * backend responde 409 `MERCADOPAGO_CON_PAGOS_PENDIENTES` con el mensaje ya redactado.
+   */
+  const desvincularMercadoPago = useCallback(async () => {
+    await api.delete("/api/instructor/mercadopago");
+  }, []);
+
+
+  const listarMisInscripciones = useCallback(async (estado?: EstadoInscripcion) => {
+    const query = estado ? `?estado=${encodeURIComponent(estado)}` : "";
+    return api.get<MiInscripcion[]>(`/api/alumno/inscripciones${query}`);
+  }, []);
+
+  const listarRosterClase = useCallback(async (claseId: string) => {
+    return api.get<RosterClase>(`/api/instructor/clases/${claseId}/roster`);
+  }, []);
+
+  // Clases e inscripciones propias del instructor. Son la fuente REAL de Panel, Próximas
+  // clases, Métricas e Historial: esas pantallas ya no dependen de la caché parcial
+  // `clases` ni del dataset mock `inscripciones`.
+  const listarMisClases = useCallback(async () => {
+    return api.get<MiClaseInstructor[]>("/api/instructor/clases");
+  }, []);
+
+  const listarInscripcionesMisClases = useCallback(async () => {
+    return api.get<InscripcionMiClase[]>("/api/instructor/inscripciones");
+  }, []);
+
+  const listarInstructores = useCallback(async (estado?: "PENDIENTE" | "APROBADO" | "RECHAZADO") => {
+    const query = estado ? `?estado=${estado}` : "";
+    return api.get<InstructorAdmin[]>(`/api/admin/instructores${query}`);
+  }, []);
+
+  const obtenerInstructor = useCallback(async (id: string) => {
+    return api.get<InstructorAdmin>(`/api/admin/instructores/${id}`);
+  }, []);
+
+  const listarClasesInstructor = useCallback(async (id: string) => {
+    return api.get<ClaseInstructorAdmin[]>(`/api/admin/instructores/${id}/clases`);
+  }, []);
+
+  const listarClasesAdmin = useCallback(async () => {
+    return api.get<ClaseAdmin[]>("/api/admin/clases");
+  }, []);
+
+  const subirDocumento = useCallback(async (archivo: File) => {
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    return api.postForm<DocumentoInstructor>("/api/instructor/documentos", formData);
+  }, []);
+
+  const listarMisDocumentos = useCallback(async () => {
+    return api.get<DocumentoInstructor[]>("/api/instructor/documentos");
+  }, []);
+
+  const verMiDocumento = useCallback(async (documentoId: string) => {
+    // Mismo cuidado que verDocumentoInstructor: la pestaña se abre dentro del click y el archivo
+    // se carga después; si no, el bloqueador de ventanas emergentes la corta.
+    const ventana = window.open("", "_blank");
+    try {
+      const blob = await api.getBlob(`/api/instructor/documentos/${documentoId}/archivo`);
+      const url = URL.createObjectURL(blob);
+      if (ventana) ventana.location.href = url;
+      else window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      ventana?.close();
+      throw err;
+    }
+  }, []);
+
+  const retirarMiDocumento = useCallback(async (documentoId: string) => {
+    await api.delete(`/api/instructor/documentos/${documentoId}`);
+  }, []);
+
+  const subirFotoPerfil = useCallback(async (archivo: File) => {
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    return api.postForm<{ usuarioId: string }>("/api/usuarios/foto", formData);
+  }, []);
+
+  const subirFotoActividad = useCallback(async (actividadId: string, archivo: File) => {
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    return api.postForm<{ actividadId: string }>(`/api/instructor/actividades/${actividadId}/foto`, formData);
+  }, []);
+
+  const listarDocumentosInstructor = useCallback(async (instructorId: string) => {
+    return api.get<DocumentoInstructor[]>(`/api/admin/instructores/${instructorId}/documentos`);
+  }, []);
+
+  const verDocumentoInstructor = useCallback(async (instructorId: string, documentoId: string) => {
+    // Abrimos la pestaña ya (sincrónico, dentro del gesto del click) y recién
+    // después buscamos el archivo — si esperáramos el fetch primero, la
+    // mayoría de los navegadores bloquean el popup por no venir de un click.
+    const ventana = window.open("", "_blank");
+    try {
+      const blob = await api.getBlob(`/api/admin/instructores/${instructorId}/documentos/${documentoId}/archivo`);
+      const url = URL.createObjectURL(blob);
+      if (ventana) ventana.location.href = url;
+      else window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      ventana?.close();
+      throw err;
+    }
+  }, []);
+
+  const aprobarInstructor = useCallback(async (id: string) => {
+    await api.post(`/api/admin/instructores/${id}/aprobar`);
+  }, []);
+
+  const rechazarInstructor = useCallback(async (id: string, motivo: string) => {
+    await api.post(`/api/admin/instructores/${id}/rechazar`, { motivo });
+  }, []);
+
+  const crearResenia = useCallback(async (claseId: string, puntaje: number, comentario: string) => {
+    await api.post(`/api/alumno/clases/${claseId}/resenas`, { puntaje, comentario });
+  }, []);
+
+  const listarResenasActividad = useCallback(async (actividadId: string) => {
+    return api.get<ReseniaActividad[]>(`/api/actividades/${actividadId}/resenas`);
+  }, []);
+
+  const listarMisResenas = useCallback(async () => {
+    return api.get<MiResenia[]>("/api/alumno/resenas");
+  }, []);
+
+  const listarResenasInstructor = useCallback(async () => {
+    return api.get<ReseniaInstructor[]>("/api/instructor/resenas");
+  }, []);
+
+  const listarResenasPublicadas = useCallback(async () => {
+    return api.get<ReseniaPublicada[]>("/api/admin/resenas/publicadas");
+  }, []);
+
+  const ocultarResenia = useCallback(async (id: string, motivo: string) => {
+    await api.post(`/api/admin/resenas/${id}/ocultar`, { motivo });
+  }, []);
+
+  const crearDenuncia = useCallback(async (claseId: string, motivo: string) => {
+    await api.post(`/api/alumno/clases/${claseId}/denuncias`, { motivo });
+  }, []);
+
+  const listarMisDenuncias = useCallback(async () => {
+    return api.get<MiDenuncia[]>("/api/alumno/denuncias");
+  }, []);
+
+  const listarDenunciasAdmin = useCallback(async () => {
+    return api.get<DenunciaAdmin[]>("/api/admin/denuncias");
+  }, []);
+
+  const resolverDenuncia = useCallback(
+    async (id: string, accion: AccionResolucion, detalle?: string, sancion?: SancionSuspension) => {
+      await api.post(`/api/admin/denuncias/${id}/resolver`, {
+        accion,
+        detalle: detalle?.trim() || undefined,
+        // Viajan con SUSPENDER (días y multa opcional) y con PENALIZAR (sólo la multa).
+        montoMulta: sancion?.montoMulta,
+        diasSuspension: sancion?.diasSuspension,
+      });
+    },
+    [],
+  );
+
+  // Pendiente -> En Auditoría al abrir la denuncia (E4Ad-HU07 criterio 3).
+  const tomarDenuncia = useCallback(async (id: string) => {
+    await api.post(`/api/admin/denuncias/${id}/auditar`);
+  }, []);
+
+  const listarMisPagos = useCallback(async () => {
+    return api.get<MiPago[]>("/api/alumno/pagos");
+  }, []);
+
+  const listarRecomendaciones = useCallback(
+    async (coords?: { lat: number; lng: number } | null, limite?: number): Promise<Recomendaciones> => {
+      const params = new URLSearchParams();
+      if (coords) {
+        params.set("lat", String(coords.lat));
+        params.set("lng", String(coords.lng));
+      }
+      if (limite) params.set("limite", String(limite));
+      const query = params.toString();
+      const r = await api.get<RecomendacionesResp>(
+        `/api/alumno/recomendaciones${query ? `?${query}` : ""}`,
+      );
+      return {
+        sinSenales: r.sinSenales,
+        recomendaciones: r.recomendadas.map((x) => ({
+          actividad: aplanarActividad(x, x.proximaClase ?? undefined),
+          puntaje: x.puntaje,
+          motivos: x.motivos,
+        })),
+      };
+    },
+    [],
+  );
+
+  // Se traga cualquier error a propósito: el alumno no tiene que enterarse de que una señal
+  // no se pudo guardar, y menos ver un cartel de error por abrir una actividad.
+  const registrarInteraccion = useCallback(
+    async (tipo: TipoInteraccion, datos: { actividadId?: string; termino?: string }) => {
+      try {
+        await api.post("/api/alumno/interacciones", { tipo, ...datos });
+      } catch {
+        /* señal perdida, no es un problema del usuario */
+      }
+    },
+    [],
+  );
+
+  // A diferencia de `registrarInteraccion`, acá el error SÍ tiene que llegar a la pantalla: el
+  // alumno apretó un botón y está esperando un informe, así que necesita saber que no salió (y la
+  // pantalla usa el 503 para caer a sus textos por nivel de intensidad).
+  const generarInformeActividad = useCallback(
+    async (actividadId: string, claseId?: string): Promise<InformeActividad> => {
+      return api.post<InformeActividad>(`/api/alumno/actividades/${actividadId}/informe`, {
+        claseId: claseId ?? null,
+      });
+    },
+    [],
+  );
+
+  // RN-19: los permisos salen de ConfiguracionRol, no de una constante del componente.
+  const listarRolesPermisos = useCallback(async () => {
+    return api.get<RolesPermisos>("/api/admin/roles");
+  }, []);
+
+  const asignarRolUsuario = useCallback(async (usuarioId: string, rolId: string) => {
+    await api.put(`/api/admin/usuarios/${usuarioId}/rol`, { rolId });
+  }, []);
+
+  const actualizarPermisosRol = useCallback(async (rolId: string, permisos: string[]) => {
+    // Se manda la foto completa del rol: lo que no viaja queda deshabilitado.
+    await api.put(`/api/admin/roles/${rolId}/permisos`, { permisos });
+  }, []);
+
+  const crearRol = useCallback(async (nombre: string, descripcion?: string) => {
+    return api.post<RolAdmin>("/api/admin/roles", { nombre, descripcion });
+  }, []);
+
+  const actualizarUsuarioAdmin = useCallback(async (id: string, input: ActualizarUsuarioAdminInput) => {
+    await api.put(`/api/admin/usuarios/${id}`, input);
+  }, []);
+
+  // E2I-HU11 criterio 4. Antes las dos acciones eran estado local de la pantalla: la
+  // respuesta y la denuncia se perdían al recargar.
+  const responderResenia = useCallback(async (id: string, respuesta: string) => {
+    return api.post<{ id: string; respuestaInstructor: string; respuestaInstructorAt: string }>(
+      `/api/instructor/resenas/${id}/respuesta`,
+      { respuesta },
+    );
+  }, []);
+
+  const denunciarResenia = useCallback(async (id: string, motivo: string) => {
+    await api.post(`/api/instructor/resenas/${id}/denuncia`, { motivo });
+  }, []);
+
+  // Galería de la actividad (sección 2: `imagenes[]`). La portada sigue siendo `subirFotoActividad`.
+  const agregarImagenActividad = useCallback(async (actividadId: string, archivo: File) => {
+    const fd = new FormData();
+    fd.append("archivo", archivo);
+    return api.postForm<{ id: string; actividadId: string; orden: number }>(
+      `/api/instructor/actividades/${actividadId}/imagenes`,
+      fd,
+    );
+  }, []);
+
+  const eliminarImagenActividad = useCallback(async (actividadId: string, imagenId: string) => {
+    await api.delete(`/api/instructor/actividades/${actividadId}/imagenes/${imagenId}`);
+  }, []);
+
+  const listarPenalizaciones = useCallback(async () => {
+    return api.get<PenalizacionAdmin[]>("/api/admin/penalizaciones");
+  }, []);
+
+  const crearPenalizacion = useCallback(async (input: CrearPenalizacionInput) => {
+    await api.post("/api/admin/penalizaciones", input);
+  }, []);
+
+  const listarMisSanciones = useCallback(async () => {
+    return api.get<MisSanciones>("/api/instructor/sanciones");
+  }, []);
+
+  const enviarComprobantePenalizacion = useCallback(async (penalizacionId: string, archivo: File) => {
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    await api.postForm(`/api/instructor/sanciones/${penalizacionId}/comprobante`, formData);
+  }, []);
+
+  const verComprobantePenalizacion = useCallback(async (comprobanteId: string) => {
+    // Mismo cuidado que verDocumentoInstructor: la pestaña se abre dentro del click y el archivo
+    // se carga después; si no, el bloqueador de ventanas emergentes la corta.
+    const ventana = window.open("", "_blank");
+    try {
+      const blob = await api.getBlob(`/api/admin/penalizaciones/comprobantes/${comprobanteId}/archivo`);
+      const url = URL.createObjectURL(blob);
+      if (ventana) ventana.location.href = url;
+      else window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      ventana?.close();
+      throw err;
+    }
+  }, []);
+
+  const desbloquearInstructorPenalizacion = useCallback(async (penalizacionId: string) => {
+    return api.post<{ suspendidoHasta: string | null }>(`/api/admin/penalizaciones/${penalizacionId}/desbloquear`);
+  }, []);
+
+  const invalidarComprobantePenalizacion = useCallback(async (penalizacionId: string, motivo: string) => {
+    await api.post(`/api/admin/penalizaciones/${penalizacionId}/invalidar-comprobante`, { motivo });
+  }, []);
+
+  const levantarSuspension = useCallback(async (penalizacionId: string, motivo: string) => {
+    return api.post<{ multaPendiente: boolean }>(`/api/admin/penalizaciones/${penalizacionId}/levantar`, { motivo });
+  }, []);
+
+  const listarUsuariosAdmin = useCallback(async () => {
+    return api.get<UsuarioAdmin[]>("/api/admin/usuarios");
+  }, []);
+
+  const actualizarEstadoUsuario = useCallback(async (id: string, estado: EstadoUsuario) => {
+    await api.post(`/api/admin/usuarios/${id}/estado`, { estado });
+  }, []);
+
+  const listarAuditoria = useCallback(async () => {
+    return api.get<AuditoriaEntry[]>("/api/admin/auditoria");
+  }, []);
+
+  const listarInscripcionesAdmin = useCallback(async () => {
+    return api.get<InscripcionAdmin[]>("/api/admin/inscripciones");
+  }, []);
+
+  // Soporte. El alta es pública (la pantalla de Ayuda lo es); las otras dos piden
+  // `soporte.gestionar`, igual que el @PreAuthorize de sus endpoints.
+  const crearReporteSoporte = useCallback(async (input: CrearReporteSoporteInput) => {
+    await api.post("/api/soporte/reportes", input);
+  }, []);
+
+  const listarReportesSoporte = useCallback(async () => {
+    return api.get<ReporteSoporteAdmin[]>("/api/admin/soporte/reportes");
+  }, []);
+
+  const cerrarReporteSoporte = useCallback(async (id: string, respuesta?: string) => {
+    await api.post(`/api/admin/soporte/reportes/${id}/cerrar`, { respuesta: respuesta?.trim() || undefined });
+  }, []);
+
+  const listarMisFavoritos = useCallback(async () => {
+    return api.get<string[]>("/api/alumno/favoritos");
+  }, []);
+
+  const agregarFavorito = useCallback(async (actividadId: string) => {
+    await api.post(`/api/alumno/actividades/${actividadId}/favorito`);
+  }, []);
+
+  const quitarFavorito = useCallback(async (actividadId: string) => {
+    await api.delete(`/api/alumno/actividades/${actividadId}/favorito`);
+  }, []);
+
+
+  const value: DataContextValue = useMemo(
+    () => ({
+      categorias,
+      nivelesIntensidad,
+      getNivelIntensidad,
+      tiposActividad,
+      actividades,
+      clases,
+      instructorNombre,
+      cargandoCatalogo,
+      errorCatalogo,
+      refrescarCatalogo,
+      getActividad,
+      getTipoActividad,
+      getCategoria,
+      getClasesDeActividad,
+      cargarDetalleActividad,
+      crearActividad,
+      actualizarActividad,
+      eliminarActividad,
+      crearClase,
+      actualizarClase,
+      eliminarClase,
+      cancelarClase,
+      notificarAusenciaProfesor,
+      listarNotificaciones,
+      marcarNotificacionesLeidas,
+      crearTipoActividad,
+      actualizarTipoActividad,
+      eliminarTipoActividad,
+      crearNivelIntensidad,
+      actualizarNivelIntensidad,
+      eliminarNivelIntensidad,
+      crearCategoria,
+      actualizarCategoria,
+      eliminarCategoria,
+      inscribirse,
+      cancelarInscripcion,
+      confirmarCobroEfectivo,
+      obtenerCuentaMercadoPago,
+      iniciarVinculacionMercadoPago,
+      desvincularMercadoPago,
+      listarMisInscripciones,
+      listarRosterClase,
+      listarMisClases,
+      listarInscripcionesMisClases,
+      listarInstructores,
+      obtenerInstructor,
+      listarClasesInstructor,
+      listarClasesAdmin,
+      subirDocumento,
+      listarMisDocumentos,
+      verMiDocumento,
+      retirarMiDocumento,
+      listarDocumentosInstructor,
+      verDocumentoInstructor,
+      aprobarInstructor,
+      rechazarInstructor,
+      subirFotoPerfil,
+      subirFotoActividad,
+      crearResenia,
+      listarResenasActividad,
+      listarMisResenas,
+      listarResenasInstructor,
+      listarResenasPublicadas,
+      ocultarResenia,
+      crearDenuncia,
+      listarMisDenuncias,
+      listarDenunciasAdmin,
+      resolverDenuncia,
+      tomarDenuncia,
+      listarMisPagos,
+      listarRecomendaciones,
+      registrarInteraccion,
+      generarInformeActividad,
+      actualizarUsuarioAdmin,
+      responderResenia,
+      denunciarResenia,
+      agregarImagenActividad,
+      eliminarImagenActividad,
+      listarPenalizaciones,
+      listarMisSanciones,
+      enviarComprobantePenalizacion,
+      verComprobantePenalizacion,
+      desbloquearInstructorPenalizacion,
+      invalidarComprobantePenalizacion,
+      levantarSuspension,
+      listarRolesPermisos,
+      asignarRolUsuario,
+      actualizarPermisosRol,
+      crearRol,
+      crearPenalizacion,
+      listarUsuariosAdmin,
+      actualizarEstadoUsuario,
+      listarAuditoria,
+      listarInscripcionesAdmin,
+      crearReporteSoporte,
+      listarReportesSoporte,
+      cerrarReporteSoporte,
+      listarMisFavoritos,
+      agregarFavorito,
+      quitarFavorito,
+    }),
+    [
+      categorias,
+      nivelesIntensidad,
+      getNivelIntensidad,
+      tiposActividad,
+      actividades,
+      clases,
+      instructorNombre,
+      cargandoCatalogo,
+      errorCatalogo,
+      refrescarCatalogo,
+      getActividad,
+      getTipoActividad,
+      getCategoria,
+      getClasesDeActividad,
+      cargarDetalleActividad,
+      crearActividad,
+      actualizarActividad,
+      eliminarActividad,
+      crearClase,
+      actualizarClase,
+      eliminarClase,
+      cancelarClase,
+      notificarAusenciaProfesor,
+      listarNotificaciones,
+      marcarNotificacionesLeidas,
+      crearTipoActividad,
+      actualizarTipoActividad,
+      eliminarTipoActividad,
+      crearNivelIntensidad,
+      actualizarNivelIntensidad,
+      eliminarNivelIntensidad,
+      crearCategoria,
+      actualizarCategoria,
+      eliminarCategoria,
+      inscribirse,
+      cancelarInscripcion,
+      confirmarCobroEfectivo,
+      obtenerCuentaMercadoPago,
+      iniciarVinculacionMercadoPago,
+      desvincularMercadoPago,
+      listarMisInscripciones,
+      listarRosterClase,
+      listarMisClases,
+      listarInscripcionesMisClases,
+      listarInstructores,
+      obtenerInstructor,
+      listarClasesInstructor,
+      listarClasesAdmin,
+      subirDocumento,
+      listarMisDocumentos,
+      verMiDocumento,
+      retirarMiDocumento,
+      listarDocumentosInstructor,
+      verDocumentoInstructor,
+      aprobarInstructor,
+      rechazarInstructor,
+      subirFotoPerfil,
+      subirFotoActividad,
+      crearResenia,
+      listarResenasActividad,
+      listarMisResenas,
+      listarResenasInstructor,
+      listarResenasPublicadas,
+      ocultarResenia,
+      crearDenuncia,
+      listarMisDenuncias,
+      listarDenunciasAdmin,
+      resolverDenuncia,
+      tomarDenuncia,
+      listarMisPagos,
+      listarRecomendaciones,
+      registrarInteraccion,
+      generarInformeActividad,
+      actualizarUsuarioAdmin,
+      responderResenia,
+      denunciarResenia,
+      agregarImagenActividad,
+      eliminarImagenActividad,
+      listarPenalizaciones,
+      listarMisSanciones,
+      enviarComprobantePenalizacion,
+      verComprobantePenalizacion,
+      desbloquearInstructorPenalizacion,
+      invalidarComprobantePenalizacion,
+      levantarSuspension,
+      listarRolesPermisos,
+      asignarRolUsuario,
+      actualizarPermisosRol,
+      crearRol,
+      crearPenalizacion,
+      listarUsuariosAdmin,
+      actualizarEstadoUsuario,
+      listarAuditoria,
+      listarInscripcionesAdmin,
+      crearReporteSoporte,
+      listarReportesSoporte,
+      cerrarReporteSoporte,
+      listarMisFavoritos,
+      agregarFavorito,
+      quitarFavorito,
+    ],
+  );
+
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+}
+
+export function useData(): DataContextValue {
+  const ctx = useContext(DataContext);
+  if (!ctx) throw new Error("useData must be used within DataProvider");
+  return ctx;
+}
+

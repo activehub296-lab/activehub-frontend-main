@@ -1,0 +1,2787 @@
+BITÁCORA DE AJUSTES VISUALES Y FUNCIONALES — ActiveHub
+Repositorio: activehub-frontend (incluye cambios de activehub-backend cuando los haya)
+Formato: el de activehub-backend/docs/BITACORA-MERCADOPAGO.txt (FORMATO-BITACORA-MERCADOPAGO.txt,
+versión 1 del 11/10/2026). Se toma solo el formato; el contenido es la serie de ajustes que el
+usuario pide de a uno a partir del 23/10/2026.
+Estructura: PARTE A (ESTADO GENERAL, se reemplaza completo en cada actualización) y PARTE B
+(ENTRADAS, solo se agregan). Al final, DUDAS ABIERTAS.
+
+================================================================================
+PARTE A — ESTADO GENERAL
+================================================================================
+
+ESTADO GENERAL
+Fecha de actualización: 31/10/2026 (después de la ENTRADA 022)
+
+Ajustes
+  1. Filtro "Distancia" de Explorar como barra de rango con dos manijas (ENTRADA 001):
+     IMPLEMENTADO; pruebas automatizadas; barra verificada en el navegador en una página
+     aislada; la pantalla Explorar completa no se probó en el navegador (requiere sesión de
+     alumno).
+  2. Filtros "Fecha" y "Horario" de Explorar: filtran en el momento y "Limpiar" los borra
+     (ENTRADA 002): corrección de error; pruebas automatizadas; no probado en el navegador.
+  3. Filtro "Disponibilidad · Solo con cupos" de Explorar: RETIRADO (ENTRADA 003).
+  4. Perfil público del instructor, desde "Ver perfil" del detalle de una actividad (ENTRADA
+     004): pantalla NUEVA; pruebas automatizadas; verificada en el navegador con el catálogo
+     real en una página aislada; no probada dentro de la aplicación con sesión de alumno.
+  5. Sección fija "Preguntas frecuentes" del detalle de una actividad: RETIRADA (ENTRADA
+     005).
+  6. "Opiniones de alumnos" del detalle: todas las opiniones con scroll propio, filtro por
+     calificación y orden (ENTRADA 006): IMPLEMENTADO; pruebas automatizadas; verificado en el
+     navegador con opiniones reales en una página aislada.
+  7. Foto de fondo en el buscador del Home y fecha del saludo sin mayúsculas de más (ENTRADA
+     007): IMPLEMENTADO; prueba automatizada de la fecha; verificado en el navegador en
+     escritorio y en celular en una página aislada.
+  8. Barra del buscador del Home adaptada al celular (ENTRADA 008): IMPLEMENTADO; verificado
+     en el navegador a 375 y 700 px en una página aislada; sin prueba automatizada (jsdom no
+     aplica media queries).
+  9. Foto de fondo en el banner del buscador de Explorar (ENTRADA 009): IMPLEMENTADO;
+     verificado en el navegador a 1280 y 375 px en una página aislada.
+  10. Filtros rápidos del Home: quedan Categoría, Nivel y Precio, con montos redondos (ENTRADA
+      010): IMPLEMENTADO; pruebas automatizadas; no probado en el navegador.
+  11. Secciones de actividades del Home: hasta 6 en una fila deslizable con flechas (ENTRADA
+      011): IMPLEMENTADO; pruebas automatizadas; verificado en el navegador a 1280 y 375 px en
+      una página aislada.
+  12. Perfil del alumno: sin "Historial de actividades" y con "Información de salud" editable
+      (ENTRADA 012): IMPLEMENTADO en backend (caso de uso nuevo) y frontend; pruebas
+      automatizadas; no probado en el navegador.
+  13. Paginación en Explorar, y paginación y filtros en Favoritos y en todas las pestañas de
+      Mis clases (ENTRADA 013): IMPLEMENTADO, solo frontend; pruebas automatizadas; no probado
+      en el navegador.
+  14. Carrusel de fotos del detalle de una actividad, y cambiar la portada ya no borra una foto
+      de la galería (ENTRADA 014): corrección de error en backend y frontend; pruebas
+      automatizadas; el carrusel se verificó en el navegador en una página aislada (1280 y 375
+      px); no probado dentro de la aplicación con datos reales.
+  15. Ilustración de fondo en el panel izquierdo del Login (ENTRADA 015): IMPLEMENTADO;
+      pruebas automatizadas; verificado en el navegador en la aplicación a 1440 y 375 px.
+  16. Instructor: paginación, scroll y lupa en Historial; paginación y scroll en Próximas
+      clases; 12 por página y búsqueda en Mis actividades; filtros y orden en Reseñas (ENTRADA
+      016): IMPLEMENTADO, solo frontend; pruebas automatizadas; no probado en el navegador.
+  17. El logo del panel lateral del instructor y del administrador ya no lleva a la landing
+      (ENTRADA 017): corrección de error; prueba automatizada; no probado en el navegador.
+  18. Documentación del instructor (ver, subir y quitar), documentación nueva obligatoria para
+      volver a postularse, motivo de rechazo obligatorio y etiqueta "Validación rechazada"
+      (ENTRADA 018): IMPLEMENTADO en backend (tres casos de uso nuevos, V35) y frontend; pruebas
+      automatizadas; no probado en el navegador.
+  19. Gestión del administrador: sin "Editar" en Actividades; paginación, scroll y filtros en
+      las seis pestañas (ENTRADA 019): IMPLEMENTADO, solo frontend; pruebas automatizadas; no
+      probado en el navegador.
+  20. Gestión del administrador: "Ordenar por" en las seis pestañas (ENTRADA 020):
+      IMPLEMENTADO, solo frontend; pruebas automatizadas; no probado en el navegador.
+  21. Limpieza de la base y carga de datos de demostración (ENTRADA 021): scripts SQL
+      IMPLEMENTADOS y PROBADOS en una base local; NO ejecutados en Supabase.
+  22. El pago en efectivo cancelado ya no habla de devoluciones (ENTRADA 022): IMPLEMENTADO en
+      backend y frontend; pruebas automatizadas, salvo tres clases que necesitan base; no
+      probado en el navegador.
+
+Frontend
+  Pruebas: 296 pruebas en 49 archivos, todas en verde. Comando ejecutado el 31/10/2026:
+    npx vitest run --maxWorkers=1. Salida literal: "Test Files  49 passed (49)" y "Tests  296
+    passed (296)". Con npm test (hilos por defecto) la misma suite dio fallas por "Test timed
+    out in 5000ms" en archivos no tocados mientras el equipo tenía corriendo otros procesos de
+    java y node (ver ENTRADA 003, PRUEBAS). Conteo de archivos: find src -name "*.test.*" | wc
+    -l -> 49.
+  Análisis estático: 0 errores, 10 advertencias (comando: npx eslint .; salida literal
+    "10 problems (0 errors, 10 warnings)"). Eran 11: la ENTRADA 002 corrigió una.
+  Verificación de tipos: sin errores (comando: npx tsc -b).
+  Compilación de producción: correcta (comando: npm run build).
+
+Backend
+  Cambios de código: el caso de uso nuevo actualizarmicondicionsalud y el campo
+    condicionSalud de GET /api/auth/me (ENTRADA 012); subirfotoactividad ya no borra el archivo
+    de la portada anterior si es de la galería, y obteneractividad devuelve tienePortada y
+    portadaImagenId (ENTRADA 014); listarmisdocumentos, descargarmidocumento y
+    retirarmidocumento (NUEVOS), reabrir con documentación nueva obligatoria, motivo de rechazo
+    obligatorio y la migración V35 (ENTRADA 018). Además cambió la copia del manual de usuario
+    que usa el asistente (ENTRADAS 013, 014 y 018). Suite completa
+    (JAVA_HOME=$HOME/.jdks/jdk-21.0.12+8 ./mvnw -B test, 26/10/2026): "Tests run: 1039,
+    Failures: 0, Errors: 0, Skipped: 2", "BUILD SUCCESS". Casos de uso: 116. Archivos de prueba:
+    212. Migraciones: 35 (V1 a V35).
+  Última corrida (31/10/2026, ENTRADA 022): 1043 pruebas; sin las 20 que necesitan base,
+    "Tests run: 1023, Failures: 0, Errors: 0, Skipped: 2", "BUILD SUCCESS". Esas 20 no se
+    ejecutaron. Cifras de arriba: las de la suite completa del 26/10/2026.
+  Datos de demostración (ENTRADA 021): scripts/datos-demo (copia de seguridad, restauración,
+    limpieza y carga, y su generador). No son migraciones y no cambian código.
+
+Integración continua
+  Estado del último flujo ejecutado: no verificado. Los cambios no están commiteados ni
+    empujados al 23/10/2026.
+
+Configuración
+  Sin variables de entorno nuevas. La migración V35 ya quedó aplicada en la base compartida de
+    Supabase (la aplica la suite del backend al levantar el contexto).
+
+Despliegue
+  Estado: no desplegado. Sin cambios.
+
+Pendientes abiertos
+  1. Probar en el navegador, con una cuenta de alumno, el filtro "Distancia" de Explorar, los
+     filtros rápidos "A menos de 5/10/25 km" del Home, "Fecha", "Horario" y "Limpiar" de
+     Explorar, "Ver perfil", las opiniones y el final del detalle de una actividad, y el
+     fondo de los buscadores del Home y de Explorar con una sesión real, los filtros rápidos
+     del Home, la tarjeta "Información de salud" del perfil del alumno, la paginación y los
+     filtros de Explorar, Favoritos y Mis clases, el carrusel de fotos del detalle con una
+     actividad real (reiniciar el backend), y con una cuenta de instructor aprobada el
+     Historial, Próximas clases, Mis actividades y Reseñas.
+  2. Commitear y empujar.
+  3. Ejecutar en Supabase 01-copia-de-seguridad.sql y 03-limpieza-y-carga-demo.sql, después de
+     avisar al equipo (ENTRADA 021), y borrar la copia cuando ya no haga falta.
+     Correr CatalogoPublicoTest, ActivehubApiApplicationTests y BusquedaSinTildesTest (ENTRADA
+     022).
+  4. Botón "Compartir" del detalle de una actividad: sigue sin acción. Postergado por decisión
+     del usuario (24/10/2026) hasta el despliegue, porque sin URL pública el enlace apuntaría a
+     localhost. Propuesta acordada: menú nativo de compartir (navigator.share) y, donde no
+     exista, copiar el enlace al portapapeles con el aviso "Enlace copiado"; y que el login
+     devuelva a la actividad compartida (RequireArea guarda la ruta pedida y Login navega a
+     ella), porque hoy quien abre el enlace sin sesión termina en su inicio y pierde la
+     actividad.
+
+================================================================================
+PARTE B — ENTRADAS
+================================================================================
+
+================================================================================
+ENTRADA 001
+================================================================================
+FECHA: 23/10/2026
+
+REPOSITORIO: activehub-frontend (código) y activehub-backend (copia del manual del asistente).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: interfaz (cambio funcional menor).
+
+TÍTULO: El filtro "Distancia" de Explorar pasa de chips fijos a una barra de rango con dos
+  manijas.
+
+QUÉ CAMBIA PARA EL USUARIO: en "Explorar", el alumno ya no elige entre siete opciones fijas
+  ("Cualquier distancia", "Menos de 2 km", "2 km", "5 km", "8 km", "10 km", "Más de 10 km"):
+  arrastra dos manijas sobre una barra de 0 a 30 km y elige un rango cualquiera, por ejemplo
+  entre 3 y 12 km. Arriba de la barra se lee el rango elegido. Con la manija derecha en el tope
+  el rango no tiene límite superior, y con la barra completa no se filtra por distancia ni se
+  pide la ubicación. Además, el filtro rápido "A menos de 25 km" del Home, que antes no hacía
+  nada en Explorar, ahora sí filtra.
+
+TEXTOS DE INTERFAZ:
+  Nuevos:
+    - Leyenda de la barra: "De <mínimo> hasta <máximo>", con los valores como "3 km" y, en el
+      tope, "30+ km". Ejemplos: "De 0 km hasta 30+ km" (sin filtrar), "De 3 km hasta 12 km".
+    - Nombres accesibles de las manijas: "Distancia mínima" y "Distancia máxima".
+  Sin cambios: título "Distancia"; en el Home, "A menos de 5 km", "A menos de 10 km" y "A menos
+    de 25 km"; en Explorar, "Para filtrar por distancia necesitamos tu ubicación, y todavía no
+    la tenemos." y el botón "Ver todas sin filtrar por distancia" (ahora vuelve la barra al
+    rango completo).
+  Retirados: los chips "Cualquier distancia", "Menos de 2 km", "2 km", "5 km", "8 km", "10 km" y
+    "Más de 10 km".
+  Manual de usuario (activehub-frontend/src/lib/manual.ts y
+    activehub-backend/src/main/resources/manual/manual-usuario-activehub.txt, idénticos), apartado
+    de Explorar:
+    - En los pasos, "radio de cercanía" pasa a "distancia".
+    - Párrafo nuevo, en lugar de la frase de los chips: "El filtro "Distancia" es una barra con
+      dos manijas, de 0 a 30 km: se arrastra la izquierda para fijar la distancia mínima y la
+      derecha para la máxima, y la leyenda de arriba muestra el rango elegido (por ejemplo, "De 3
+      km hasta 12 km"). Con la manija derecha en el tope el rango no tiene límite superior ("30+
+      km"), y con la barra completa no se filtra por distancia. Al empezar a filtrar se pide
+      autorizar el acceso a la ubicación del navegador; las actividades cuya distancia no puede
+      calcularse quedan fuera de ese filtro."
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (23/10/2026) con dos capturas: los chips actuales y la barra deseada, de
+    dos manijas, con la leyenda "De … hasta …" arriba en celeste, la pista gris y el tramo
+    elegido en naranja a rojo.
+  - components/RangoDoble.tsx (nuevo, reutilizable): dos <input type="range"> superpuestos
+    sobre la misma pista; la pista y el tramo elegido se dibujan con divs. Las manijas no se
+    cruzan (la mínima no pasa a la máxima ni al revés). Con las dos manijas juntas en el tope,
+    la mínima queda por encima para poder arrastrarla de vuelta. Se maneja también con el
+    teclado. Los estilos de las manijas están en src/index.css, clase .ah-rango, porque los
+    pseudo-elementos de un input range no se pueden escribir en línea.
+  - lib/distancia.ts (nuevo): DISTANCIA_MAX_KM = 30, paso de 1 km, RANGO_COMPLETO,
+    filtroDistanciaActivo, dentroDelRangoDistancia (extremos incluidos; en el tope no hay
+    límite superior; con el filtro activo, una distancia que no se puede calcular no entra),
+    formatKmFiltro y rangoHasta.
+  - pages/alumno/Explorar.tsx: se retiran RADIOS y dentroDelRadio; el estado pasa a
+    rangoDist {minKm, maxKm}. La ubicación del navegador se pide recién cuando el rango empieza
+    a filtrar. "Limpiar" y "Ver todas sin filtrar por distancia" vuelven al rango completo.
+  - pages/alumno/Home.tsx: los filtros rápidos de ubicación y el buscador mandan a Explorar
+    distanciaMaxKm (número) en lugar de radio (texto).
+  - El cálculo de la distancia no cambia: Haversine contra la ubicación del navegador
+    (lib/geo.ts), en el cliente.
+
+ESTADO: IMPLEMENTADO. PROBADO con pruebas automatizadas. La barra se verificó en el navegador
+  en una página aislada (que se borró después): leyenda "De 3 km hasta 12 km", arrastre de las
+  dos manijas, tope "De 10 km hasta 30+ km" y las dos manijas juntas en el tope separadas
+  arrastrando la mínima ("De 6 km hasta 30+ km"). No se probó la pantalla Explorar completa en
+  el navegador: requiere iniciar sesión como alumno (PENDIENTE 1).
+
+HISTORIAS Y CRITERIOS: E3A (búsqueda y filtrado del alumno, código de historia a confirmar):
+  el filtro por radio pasa a ser un rango mínimo-máximo.
+
+PANTALLAS: "Explorar" del alumno; "Inicio" del alumno (filtros rápidos, sin cambios
+  visibles); "Manual de usuario" (SYS-PAN-MAN, texto). Códigos E3A-PAN a confirmar.
+
+REGLAS DE NEGOCIO: sin cambios. Se mantiene que sin ubicación no se afirma que una actividad
+  esté dentro de un rango de distancia.
+
+MÓDULOS: 10. Búsqueda y Filtrado; 5. Alumno; 15. Ayuda y Soporte al Usuario (manual).
+
+CASOS DE USO: sin cambios (el filtrado de Explorar es del cliente).
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios; sin dependencias nuevas (la barra es HTML y CSS propios).
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Nuevas: lib/distancia.test.ts (6 pruebas: la barra completa no filtra; extremos
+    incluidos; el tope sin límite superior; sin distancia medible no entra; formato "30+ km";
+    "hasta X km" de otra pantalla acotado a la barra, con la regresión de "A menos de 25 km") y
+    components/RangoDoble.test.tsx (3 pruebas: leyenda, cada manija como control propio, las
+    manijas no se cruzan). "Tests  9 passed (9)".
+  - Frontend completo (npm test, 23/10/2026): "Test Files  26 passed (26)" y "Tests  189
+    passed (189)". Antes: 180 en 24.
+  - Manual en el backend: "Tests run: 21, Failures: 0, Errors: 0, Skipped: 0".
+  - Manuales: verificación visual de la barra descripta en ESTADO.
+
+ANÁLISIS ESTÁTICO: "11 problems (0 errors, 11 warnings)", las mismas de antes (las dos de
+  Explorar.tsx, react-hooks/exhaustive-deps en dos useMemo, ya existían). npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES:
+  - Tope de 30 km con "sin límite" en el extremo. Alternativa descartada: tope sin "sin
+    límite" (no se podría pedir "más de 10 km", que los chips ofrecían). 30 km cubre el "A
+    menos de 25 km" del Home.
+  - Paso de 1 km. Con los chips el valor más chico era "Menos de 2 km"; con la barra se puede
+    pedir "hasta 1 km".
+  - Componente reutilizable (RangoDoble) en lugar de una barra escrita dentro de Explorar,
+    porque la referencia del usuario es la misma barra aplicada a un precio.
+  - Inputs nativos superpuestos en lugar de manijas dibujadas a mano: el teclado y los lectores
+    de pantalla funcionan sin código extra.
+
+ERRORES DETECTADOS: síntoma: el filtro rápido "A menos de 25 km" del Home llevaba a Explorar
+  sin filtrar por distancia. Causa: mandaba el texto "25 km", que no coincidía con ninguno de
+  los chips de Explorar, y Explorar lo ignoraba sin avisar. Corrección: el Home manda un número
+  (distanciaMaxKm) y Explorar lo acota a la barra. Cómo se detectó: al revisar quién usaba el
+  filtro de radio para este cambio.
+
+CAPTURAS SUGERIDAS:
+  - Panel de filtros de Explorar con la barra "Distancia" en "De 3 km hasta 12 km".
+  - La barra con la manija derecha en el tope ("30+ km").
+  - Consola con "Tests  189 passed (189)".
+
+PENDIENTE QUE QUEDA: los pendientes abiertos del ESTADO GENERAL.
+
+================================================================================
+ENTRADA 002
+================================================================================
+FECHA: 23/10/2026
+
+REPOSITORIO: activehub-frontend
+
+RAMA Y COMMITS: main. Sin commit al momento de escribir esta entrada. Sin Pull Request.
+
+TIPO: corrección de error.
+
+TÍTULO: En Explorar, elegir una fecha o un horario no filtraba la lista, y "Limpiar" no los
+  borraba.
+
+QUÉ CAMBIA PARA EL USUARIO: en "Explorar", al elegir una fecha o una franja horaria ("Mañana",
+  "Tarde", "Noche") la lista de actividades se actualiza en el momento. Antes seguía mostrando
+  los resultados anteriores hasta que se tocaba otro filtro. Además, "Limpiar" ahora vuelve
+  también la fecha a vacía y el horario a "Cualquier horario"; antes esos dos quedaban
+  aplicados.
+
+TEXTOS DE INTERFAZ: sin cambios. Vigentes: títulos "Fecha" y "Horario"; opciones "Cualquier
+  horario", "Mañana", "Tarde" y "Noche"; enlace "Limpiar".
+
+DETALLE TÉCNICO:
+  - Detectado al revisar Explorar para la ENTRADA 001: ESLint ya avisaba
+    (react-hooks/exhaustive-deps, "React Hook useMemo has missing dependencies: 'fecha' and
+    'franja'").
+  - Causa 1: el useMemo que arma la lista filtrada usaba fecha y franja pero no las tenía en sus
+    dependencias, así que no se recalculaba al cambiarlas. Corrección: se agregaron.
+  - Causa 2: clearFilters ("Limpiar") no reseteaba fecha ni franja. Corrección: setFecha("") y
+    setFranja("Cualquier horario").
+  - El filtrado en sí (próxima clase de cada actividad, día y hora locales) no cambió.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas. No probado en el navegador
+  (PENDIENTE 1).
+
+HISTORIAS Y CRITERIOS: E3A (búsqueda y filtrado del alumno, código a confirmar): los filtros
+  de fecha y franja horaria se aplican al elegirlos.
+
+PANTALLAS: "Explorar" del alumno.
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 10. Búsqueda y Filtrado; 5. Alumno.
+
+CASOS DE USO: sin cambios.
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: R06 (pruebas insuficientes): Explorar tiene su primera prueba de pantalla.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Nueva: pages/alumno/Explorar.test.tsx con 3 pruebas ("elegir una franja horaria filtra en
+    el momento", "elegir una fecha filtra en el momento" y "'Limpiar' borra también la fecha y
+    el horario").
+  - Se verificó que las 3 fallan contra Explorar.tsx sin la corrección ("Tests  3 failed (3)")
+    y pasan con ella. En un primer intento las dos primeras pasaban también sin la corrección:
+    el doble del contexto devolvía funciones nuevas en cada render, lo que forzaba el recálculo
+    y escondía el error; se lo cambió por uno con valores estables, como el contexto real.
+  - Frontend completo (npm test, 23/10/2026): "Test Files  27 passed (27)" y "Tests  192
+    passed (192)". Antes: 189 en 26. Una corrida anterior el mismo día dio 7 fallas, todas
+    por "Test timed out in 5000ms" en archivos no relacionados (NotificationBell, Ayuda,
+    Manual, Auditoria, MisResenas, Explorar); se repitió con "npx vitest run --maxWorkers=2"
+    ("Tests  192 passed (192)") y con npm test ("Tests  192 passed (192)"). Se atribuye a la
+    carga del equipo en ese momento; no se cambió ningún tiempo de espera.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)" (antes 11: desaparece la advertencia
+  de este useMemo). npx tsc -b: sin errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES: corregir también "Limpiar", que no estaba en el pedido, porque afecta a los mismos
+  dos filtros y con la lista ya recalculándose el problema quedaba a la vista.
+
+ERRORES DETECTADOS: los dos de DETALLE TÉCNICO. Cómo se detectaron: advertencia de ESLint
+  (causa 1) y revisión del código al corregirla (causa 2).
+
+CAPTURAS SUGERIDAS: Explorar con una franja horaria elegida y la lista ya filtrada.
+
+PENDIENTE QUE QUEDA: los pendientes abiertos del ESTADO GENERAL.
+
+================================================================================
+ENTRADA 003
+================================================================================
+FECHA: 23/10/2026
+
+REPOSITORIO: activehub-frontend (código) y activehub-backend (copia del manual del asistente).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: cambio funcional (retiro de un filtro).
+
+TÍTULO: Se retira el filtro "Disponibilidad · Solo con cupos" de Explorar.
+
+QUÉ CAMBIA PARA EL USUARIO: en "Explorar" ya no aparece la sección "Disponibilidad" con la
+  casilla "Solo con cupos". El resto de los filtros no cambia. Las tarjetas siguen mostrando
+  el cupo de la próxima clase como antes.
+
+TEXTOS DE INTERFAZ:
+  Retirados: título "Disponibilidad" y casilla "Solo con cupos" del panel de filtros de
+    Explorar.
+  Manual de usuario (las dos copias del sistema, idénticas), apartado de Explorar, paso de los
+    filtros: "Aplicar los filtros deseados: texto, categoría, tipo de actividad (se actualiza
+    según la categoría elegida), nivel de intensidad, precio máximo, fecha, franja horaria,
+    distancia e instructor." (se quitó "disponibilidad de cupos").
+  Sin cambios: la entrada "Disponibilidad de cupos" del glosario de estados del manual
+    ("Disponible · Últimos cupos · Sin cupos"), que describe el indicador de cada clase y no el
+    filtro.
+
+DETALLE TÉCNICO:
+  - Observación del usuario (23/10/2026): el filtro filtra actividades, no clases, y así es
+    difícil de interpretar. La idea correcta sería traer actividades con clases creadas y con
+    cupos.
+  - Análisis: el catálogo (listaractividades) le manda al frontend una sola clase por
+    actividad, la próxima no cancelada ni finalizada. El filtro miraba solo esa clase, con tres
+    defectos: una actividad sin ninguna clase pasaba como "con cupos" (backend y frontend
+    tratan la falta de próxima clase como disponible); una actividad con la próxima clase llena
+    quedaba afuera aunque otra clase posterior tuviera lugar; y no se tenía en cuenta que la
+    inscripción cierra 1 hora antes.
+  - Alternativas propuestas al usuario: (1) que el catálogo del backend informe las clases con
+    lugar; (2) solo en el frontend, interpretar mejor la próxima clase y renombrar el filtro
+    "Próxima clase con lugar"; (3) pedir el detalle de cada actividad desde el frontend. El
+    usuario descartó tocar el backend y decidió retirar el filtro.
+  - pages/alumno/Explorar.tsx: se retiran el estado soloDisponibles, su condición en la lista
+    filtrada, su reseteo en "Limpiar" y el bloque de la interfaz. Se quitó también getCategoria
+    de las dependencias de esa lista, que solo lo usaba el filtro retirado (ESLint lo marcaba
+    como dependencia innecesaria).
+  - Backend: sin cambios. El parámetro soloConCupos de GET /api/actividades sigue existiendo y
+    el frontend no lo usa (no lo usaba tampoco antes).
+
+ESTADO: RETIRADO (el filtro). PROBADO con pruebas automatizadas. No probado en el navegador.
+
+HISTORIAS Y CRITERIOS: E3A (búsqueda y filtrado del alumno, código a confirmar): queda
+  RETIRADO el filtro por disponibilidad de cupos en Explorar.
+
+PANTALLAS: "Explorar" del alumno; "Manual de usuario" (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 10. Búsqueda y Filtrado; 5. Alumno; 15. Ayuda y Soporte al Usuario (manual).
+
+CASOS DE USO: sin cambios.
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Explorar.test.tsx: se agrega "no se ofrece 'Solo con cupos'" (4 pruebas en el archivo,
+    "Tests  4 passed (4)").
+  - Frontend completo: "Test Files  27 passed (27)" y "Tests  193 passed (193)" con npx vitest
+    run --maxWorkers=1. Con npm test (hilos por defecto) dio entre 5 y 13 fallas en distintas
+    corridas, todas en archivos que este cambio no toca (Ayuda, Manual, NotificationBell,
+    Auditoria, MisResenas) y casi todas "Test timed out in 5000ms"; en ese momento había otros
+    dos procesos java y dos node corriendo en el equipo. No se cambió ningún tiempo de espera.
+  - Manual en el backend: ManualUsuarioTest y PreguntarAlAsistenteServiceTest, "Tests run: 21,
+    Failures: 0, Errors: 0, Skipped: 0".
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", igual que después de la ENTRADA 002.
+  npx tsc -b: sin errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES:
+  - Retirar el filtro (decisión del usuario) en lugar de corregirlo sin tocar el backend.
+    Motivo: con solo la próxima clase de cada actividad no se puede responder "¿tiene alguna
+    clase con lugar?", y un filtro que no se puede explicar en una línea confunde más de lo
+    que ayuda.
+  - No tocar el parámetro soloConCupos del backend (decisión del usuario de no modificar el
+    backend en este ajuste).
+
+ERRORES DETECTADOS: los tres defectos del filtro descritos en DETALLE TÉCNICO; quedan sin
+  efecto al retirarlo. Queda vigente uno relacionado, fuera de este ajuste: una actividad sin
+  ninguna clase muestra "Disponible" en su tarjeta (ver DUDAS ABIERTAS).
+
+CAPTURAS SUGERIDAS: panel de filtros de Explorar sin la sección "Disponibilidad".
+
+PENDIENTE QUE QUEDA: los pendientes abiertos del ESTADO GENERAL.
+
+================================================================================
+ENTRADA 004
+================================================================================
+FECHA: 23/10/2026
+
+REPOSITORIO: activehub-frontend (código) y activehub-backend (copia del manual del asistente).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: nueva funcionalidad.
+
+TÍTULO: Perfil público del instructor, al que lleva "Ver perfil" del detalle de una actividad.
+
+QUÉ CAMBIA PARA EL USUARIO: en el detalle de una actividad, el botón "Ver perfil" de la tarjeta
+  del instructor (que antes no hacía nada) abre una pantalla nueva con el perfil público del
+  instructor: su nombre y su foto, la indicación de instructor verificado, las categorías que
+  dicta, cuántas actividades tiene publicadas, la calificación promedio de sus actividades y su
+  próxima clase. Debajo se listan todas sus actividades en una grilla de 9 por página, con un
+  buscador, filtros por categoría y por nivel, y un selector de orden. Cada tarjeta abre el
+  detalle de esa actividad. No se muestran datos de contacto ni datos personales.
+
+TEXTOS DE INTERFAZ (nuevos, pantalla "Perfil del instructor"):
+  - "← Volver"
+  - Encabezado: nombre del instructor; "Instructor verificado"; "Dicta:" seguido de las
+    categorías.
+  - Indicadores: "Actividades publicadas"; "Calificación promedio" (o "Sin calificaciones
+    todavía"); "Próxima clase" con la fecha y la hora (o "Sin clases programadas").
+  - Sección: "Actividades de <nombre>"; campo "Buscar entre sus actividades…"; "Ordenar por"
+    con las opciones "Próxima clase", "Nombre", "Precio: menor", "Precio: mayor" y "Mejor
+    valoradas"; filtros "Categoría" (con "Todas") y "Nivel" (con "Todos"), que solo aparecen
+    si el instructor tiene más de una opción; contador "N actividades" o "1 actividad", con "de
+    <total>" cuando hay filtros; "Limpiar filtros"; paginación con "« Primera", "Anterior",
+    "Siguiente" y "Última »".
+  - Vacíos: "Ninguna de sus actividades coincide con la búsqueda."; "Este instructor no tiene
+    actividades publicadas en este momento." con el botón "Ir a Explorar".
+  - Carga: "Cargando perfil del instructor, por favor espere".
+  Sin cambios: el botón "Ver perfil" del detalle (ahora navega).
+  Manual de usuario (las dos copias, idénticas), apartado 2.3 "Consultar el detalle de una
+    actividad", párrafo nuevo al final: "En la tarjeta del instructor, el botón "Ver perfil"
+    abre su perfil público: nombre, foto, la indicación "Instructor verificado", las categorías
+    que dicta, la cantidad de actividades publicadas, la calificación promedio de sus
+    actividades ya calificadas y su próxima clase. Debajo se listan todas sus actividades, 9
+    por página, con un buscador ("Buscar entre sus actividades…"), filtros por categoría y por
+    nivel, y el selector "Ordenar por" (próxima clase, nombre, precio o mejor valoradas). El
+    perfil no muestra datos de contacto ni datos personales del instructor."
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (23/10/2026): una pantalla con los datos no sensibles del instructor y
+    todas sus actividades, con desplazamiento y paginación si hace falta, buscador y filtros.
+  - Consultado el usuario, eligió hacerlo solo con lo que ya tiene el frontend, sin endpoint
+    nuevo. Por eso no se muestran especialidad, años de experiencia ni descripción: existen en
+    PerfilInstructor, pero hoy solo los devuelve GET /api/admin/instructores/{id} (permiso
+    instructores.validar), que además trae correo, teléfono y fecha de nacimiento y no se usa
+    acá.
+  - pages/alumno/PerfilInstructor.tsx (nueva), ruta /alumno/instructor/:id en App.tsx, dentro
+    del área de alumno y junto a /alumno/actividad/:id (sin permiso propio: es catálogo).
+  - Datos: instructorNombre y el catálogo (actividades) del DataContext, filtrado por
+    instructorId; foto por Avatar (/api/fotos/**, público). Sin consultas nuevas.
+  - Calificación promedio: promedio de actividad.rating de las actividades con rating mayor que
+    0 (una actividad sin reseñas no cuenta como 0). Próxima clase: la más cercana entre las
+    próximas clases futuras de sus actividades, con useAhora() (no Date.now() durante el
+    render, que ESLint marca como error con react-hooks/purity).
+  - Paginación de 9 (usePaginado y Paginacion); todo cambio de filtro vuelve a la página 1;
+    cambiar de página desplaza la vista al título de la sección.
+  - pages/alumno/Detalle.tsx: "Ver perfil" pasa de <button> sin acción a <Link> a la ruta nueva.
+
+ESTADO: IMPLEMENTADO. PROBADO con pruebas automatizadas. Verificación en el navegador: la
+  pantalla se montó en una página aislada con los proveedores reales y el catálogo real del
+  backend en ejecución (instructor de demostración del seed): mostró nombre, "Instructor
+  verificado", tres categorías, 6 actividades, calificación 3.9 y la próxima clase; el
+  buscador con "yoga" dejó "1 actividad de 6" y "Limpiar filtros". A 375 px de ancho ningún
+  elemento de la pantalla nueva se sale y la grilla pasa a una columna. La página aislada se
+  borró. No se probó dentro de la aplicación con sesión de alumno (PENDIENTE 1).
+
+HISTORIAS Y CRITERIOS: E3A-HU NUEVA (propuesta, código a asignar): "Como alumno quiero ver el
+  perfil público de un instructor y todas sus actividades, para elegir con quién cursar".
+
+PANTALLAS: E3A-PAN-14 NUEVA (propuesta): "Perfil del instructor" (/alumno/instructor/:id).
+  Modificada: detalle de la actividad (botón "Ver perfil"). "Manual de usuario" (SYS-PAN-MAN,
+  texto).
+
+REGLAS DE NEGOCIO: sin reglas nuevas. Se apoya en RN-16: el catálogo solo incluye oferta de
+  instructores verificados, por eso la pantalla puede afirmar "Instructor verificado".
+
+MÓDULOS: 5. Alumno; 6. Instructor (visibilidad pública); 10. Búsqueda y Filtrado; 15. Ayuda y
+  Soporte al Usuario (manual).
+
+CASOS DE USO: sin cambios en el backend.
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: la pantalla solo usa datos públicos (nombre, foto y catálogo). No consume el endpoint
+  de administrador del instructor ni muestra correo, teléfono, DNI ni fecha de nacimiento.
+
+PRUEBAS:
+  - Nueva: pages/alumno/PerfilInstructor.test.tsx con 6 pruebas ("muestra nombre, verificación,
+    categorías y números calculados de sus actividades", "un instructor sin actividades
+    publicadas no tiene perfil que mostrar", "se paginan de a 9", "el buscador ignora las
+    tildes y 'Limpiar filtros' vuelve a mostrar todas", "filtra por categoría y por nivel" y
+    "por defecto ordena por próxima clase, con las que no tienen clases al final"). "Tests  6
+    passed (6)".
+  - Frontend completo (npx vitest run --maxWorkers=1, 23/10/2026): "Test Files  28 passed
+    (28)" y "Tests  199 passed (199)". Antes: 193 en 27.
+  - Manual: frontend "Tests  27 passed (27)"; backend ManualUsuarioTest y
+    PreguntarAlAsistenteServiceTest, "Tests run: 21, Failures: 0, Errors: 0, Skipped: 0" (el
+    párrafo nuevo va dentro del apartado 2.3: los 39 apartados no cambian).
+  - Manuales: la verificación en el navegador descripta en ESTADO.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES:
+  - Solo frontend (decisión del usuario). Alternativa descartada: un endpoint público de solo
+    lectura con especialidad, experiencia y descripción.
+  - 9 actividades por página (tres filas de la grilla de tres columnas).
+  - Orden por defecto "Próxima clase": lo primero que se puede cursar.
+  - Filtros de categoría y nivel solo con las opciones que tiene ese instructor, y ocultos si
+    hay una sola.
+  - Un instructor sin actividades publicadas no tiene perfil: el catálogo no trae ningún dato
+    suyo.
+  - No se agregó a lib/areas.ts: no es un ítem de menú, igual que el detalle de la actividad.
+
+ERRORES DETECTADOS:
+  - Síntoma: "Ver perfil" del detalle de una actividad no hacía nada. Causa: era un <button>
+    sin onClick. Corrección: Link a la pantalla nueva. Cómo se detectó: reporte del usuario.
+  - Observado al verificar en el navegador, sin corregir (fuera de este ajuste): la barra de
+    navegación del alumno (AlumnoNav) se desborda a la derecha en anchos de 800 px o menos (el
+    chip del usuario termina en 885 px), y en celular eso ensancha toda la página. Afecta a
+    todas las pantallas del alumno.
+
+CAPTURAS SUGERIDAS:
+  - Perfil de un instructor con sus indicadores y la grilla de actividades.
+  - El buscador con un resultado ("1 actividad de 6").
+  - El botón "Ver perfil" en el detalle de una actividad.
+
+PENDIENTE QUE QUEDA: los pendientes abiertos del ESTADO GENERAL.
+
+================================================================================
+ENTRADA 005
+================================================================================
+FECHA: 24/10/2026
+
+REPOSITORIO: activehub-frontend
+
+RAMA Y COMMITS: main. Sin commit al momento de escribir esta entrada. Sin Pull Request.
+
+TIPO: interfaz (retiro de una sección).
+
+TÍTULO: Se retira la sección fija "Preguntas frecuentes" del detalle de una actividad.
+
+QUÉ CAMBIA PARA EL USUARIO: al final del detalle de una actividad ya no aparece la sección
+  "Preguntas frecuentes" con tres preguntas. El detalle termina en las reseñas. Las preguntas
+  frecuentes de la pantalla de Ayuda, el chat "¿Dudas?" y el manual de usuario no cambian.
+
+TEXTOS DE INTERFAZ:
+  Retirados del detalle de una actividad: el título "Preguntas frecuentes" y las tres
+    preguntas con sus respuestas:
+    - "¿Qué pasa si no puedo asistir?" — "Podés cancelar tu inscripción desde "Mis clases"
+      antes del inicio. Si pagaste con Mercado Pago, el reintegro se procesa según la política
+      de cancelación de la clase."
+    - "¿Necesito experiencia previa?" — "No, las clases están pensadas para recibir alumnos de
+      distintos niveles. El instructor adapta la propuesta según el grupo."
+    - "¿Qué tengo que llevar?" — "Ropa cómoda acorde a la actividad, calzado adecuado y una
+      botella de agua. Cualquier elemento adicional se informa al confirmar tu lugar."
+  Manual de usuario: sin cambios (no mencionaba esta sección; sus "Preguntas frecuentes" son
+    las de la pantalla de Ayuda).
+
+DETALLE TÉCNICO:
+  - Consulta del usuario (24/10/2026) sobre si la sección tenía sentido; se le dio una opinión
+    sin cambios y eligió retirarla (opción A de tres: retirarla; reemplazarla por un bloque
+    "Antes de inscribirte" con reglas reales calculadas; preguntas escritas por el instructor
+    para cada actividad, que requería backend).
+  - Motivos: las preguntas estaban escritas en el código (const FAQS en
+    pages/alumno/Detalle.tsx), eran iguales para todas las actividades aunque aparecían como
+    propias de cada una, y dos respuestas contradecían al sistema: no existe una "política de
+    cancelación de la clase" (al cancelar el alumno, con Mercado Pago se libera la retención y
+    el efectivo no se toca), y "no hace falta experiencia previa" es falso para actividades de
+    nivel "Física alta". Tampoco existe un mecanismo que informe "elementos adicionales al
+    confirmar tu lugar". Además duplicaban la ayuda general (lib/faqs.ts, chat y manual).
+  - Se quitaron la constante FAQS y el bloque de la interfaz; en su lugar queda un comentario
+    con el motivo. lib/faqs.ts (preguntas frecuentes de Ayuda y respaldo del chat) no cambia.
+
+ESTADO: RETIRADO (la sección). PROBADO con pruebas automatizadas. No probado en el navegador.
+
+HISTORIAS Y CRITERIOS: E3A (detalle de actividad, código a confirmar): si algún criterio pedía
+  preguntas frecuentes en el detalle, queda RETIRADO.
+
+PANTALLAS: detalle de la actividad del alumno (E3A-PAN, código a confirmar).
+
+REGLAS DE NEGOCIO: sin cambios. La sección retirada describía mal la cancelación con
+  reintegro (decisión 6 y ambigüedad 1 de la spec, en los CLAUDE.md).
+
+MÓDULOS: 5. Alumno; 15. Ayuda y Soporte al Usuario.
+
+CASOS DE USO: sin cambios.
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: R05 (inconsistencias entre documentación y sistema): se elimina un texto de interfaz
+  que contradecía las reglas de reintegro.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Nueva: pages/alumno/Detalle.test.tsx con 2 pruebas ("'Ver perfil' lleva al perfil público
+    del instructor", que cubre la ENTRADA 004, y "no muestra la sección fija de preguntas
+    frecuentes"). Las dos fallan contra la versión commiteada de Detalle.tsx ("Tests  2 failed
+    (2)") y pasan con la actual.
+  - Frontend completo (npx vitest run --maxWorkers=1, 24/10/2026): "Test Files  29 passed
+    (29)" y "Tests  201 passed (201)". Antes: 199 en 28.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES: retirar en lugar de corregir los textos (decisión del usuario): ninguna versión
+  fija puede responder por una actividad concreta.
+
+ERRORES DETECTADOS: los textos de la sección que contradecían al sistema, descritos en
+  DETALLE TÉCNICO. Cómo se detectaron: revisión pedida por el usuario.
+
+CAPTURAS SUGERIDAS: final del detalle de una actividad, terminando en las reseñas.
+
+PENDIENTE QUE QUEDA: los pendientes abiertos del ESTADO GENERAL.
+
+================================================================================
+ENTRADA 006
+================================================================================
+FECHA: 24/10/2026
+
+REPOSITORIO: activehub-frontend (código) y activehub-backend (copia del manual del asistente).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: interfaz (cambio funcional).
+
+TÍTULO: "Opiniones de alumnos" del detalle de una actividad: todas las opiniones en una lista
+  con scroll propio, filtro por calificación y orden.
+
+QUÉ CAMBIA PARA EL USUARIO: en el detalle de una actividad, la sección "Opiniones de alumnos"
+  muestra ahora todas las opiniones (antes solo las 5 primeras, y el resto no se podía ver), en
+  un recuadro con su propia barra de desplazamiento. Encima de la lista hay un filtro por
+  calificación ("Todas" o de 5 a 1 estrella, cada opción con su cantidad) y un selector "Ordenar
+  por". Con un filtro aplicado se indica cuántas opiniones se muestran.
+
+TEXTOS DE INTERFAZ (nuevos):
+  - "Calificación", con las opciones "Todas" y "5 ★ (N)", "4 ★ (N)", "3 ★ (N)", "2 ★ (N)", "1
+    ★ (N)" (nombres accesibles: "5 estrellas (N)" … "1 estrella (N)").
+  - "Ordenar por", con "Más recientes" (opción inicial), "Más antiguas", "Mejor calificación"
+    y "Peor calificación".
+  - Leyenda: "N opiniones" (o "1 opinión") sin filtro; "Mostrando N de M opiniones" con filtro.
+  - Vacío con filtro: "No hay opiniones con N estrellas." (o "con 1 estrella").
+  Sin cambios: "Opiniones de alumnos", el resumen con el promedio y las barras por estrella,
+    "Todavía no hay opiniones publicadas para esta actividad.", y cada opinión con su
+    respuesta del instructor.
+  Manual de usuario (las dos copias, idénticas), apartado 2.3, la frase de las reseñas queda:
+    "Al pie de la pantalla, en "Opiniones de alumnos", se encuentran las reseñas de la actividad,
+    con la calificación promedio, los comentarios y las respuestas del instructor. La lista
+    muestra todas las opiniones y se desplaza dentro de su propio recuadro; se puede filtrar por
+    "Calificación" ("Todas" o de 5 a 1 estrella, con la cantidad de cada una) y ordenar con
+    "Ordenar por": "Más recientes" (la opción inicial), "Más antiguas", "Mejor calificación" o
+    "Peor calificación". Con un filtro aplicado se indica cuántas se muestran, por ejemplo
+    "Mostrando 12 de 19 opiniones"."
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (24/10/2026): una barra de desplazamiento para las opiniones, un filtro
+    por calificación (1 a 5 estrellas) y un orden "Más reciente".
+  - pages/alumno/Detalle.tsx: se reemplaza reviewsActividad.slice(0, 5) por la lista completa
+    filtrada y ordenada, dentro de un contenedor con max-height de 620 px y overflow-y auto;
+    estados estrellasSel (null = todas) y ordenOpiniones, declarados antes del return temprano
+    de la pantalla. Al cambiar un filtro la lista vuelve al inicio (scrollTop = 0).
+  - lib/opiniones.ts (nuevo): opinionesVisibles (filtro por estrellas y cuatro órdenes; a igual
+    puntaje, la más reciente primero; no modifica la lista recibida) y ORDENES_OPINIONES. Está
+    fuera de la pantalla porque ESLint (react-refresh/only-export-components) no permite que un
+    archivo de pantalla exporte funciones.
+  - src/index.css: clase nueva .ah-scroll (barra fina visible, scrollbar-gutter: stable,
+    overscroll-behavior: contain), reutilizable.
+  - Primera versión verificada en el navegador: los chips de calificación compartían fila con
+    "Ordenar por" y se partían en dos renglones; se reorganizó en dos filas (chips; debajo, la
+    leyenda a la izquierda y "Ordenar por" a la derecha).
+  - Sin cambios en el backend: GET /api/actividades/{id}/resenas ya devuelve todas las
+    opiniones visibles.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas. Verificado en el navegador en una
+  página aislada con los proveedores reales y la actividad de demostración "Yoga al amanecer"
+  (19 opiniones): conteos por estrella 12, 2, 4, 0 y 1; el filtro de 5 estrellas mostró
+  "Mostrando 12 de 19 opiniones" y 12 tarjetas de 5 estrellas; la lista se desplaza dentro de
+  sus 620 px (contenido de 1540 px); al volver a "Todas" la lista volvió al inicio con 19
+  opiniones; "Peor calificación" las ordenó de 1 a 5 estrellas. A 375 px de ancho nada de la
+  sección se sale. La página aislada se borró.
+
+HISTORIAS Y CRITERIOS: E3A (detalle de actividad y reseñas, código a confirmar): criterios
+  NUEVOS propuestos: ver todas las opiniones, filtrarlas por calificación y ordenarlas.
+
+PANTALLAS: detalle de la actividad del alumno; "Manual de usuario" (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: sin cambios (siguen fuera las opiniones ocultas por un administrador).
+
+MÓDULOS: 9. Historial y Calificaciones; 10. Búsqueda y Filtrado; 5. Alumno; 15. Ayuda y
+  Soporte al Usuario (manual).
+
+CASOS DE USO: sin cambios.
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Nueva: lib/opiniones.test.ts (5 pruebas: orden por defecto, más antiguas, por calificación
+    con desempate por fecha, filtro por estrellas, no modifica la lista).
+  - Detalle.test.tsx suma 3 ("muestra todas en una lista con scroll propio, la más reciente
+    primero", con 7 opiniones; "filtra por estrellas e informa cuántas se muestran"; "ordena
+    por las más antiguas y por calificación"). El archivo queda con 5.
+  - Frontend completo (npx vitest run --maxWorkers=1, 24/10/2026): "Test Files  30 passed
+    (30)" y "Tests  209 passed (209)". Antes: 201 en 29.
+  - Manual: frontend "Tests  27 passed (27)"; backend ManualUsuarioTest y
+    PreguntarAlAsistenteServiceTest, "Tests run: 21, Failures: 0, Errors: 0, Skipped: 0".
+  - Manuales: verificación en el navegador descripta en ESTADO.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES:
+  - Sumar "Más antiguas", "Mejor calificación" y "Peor calificación" al orden pedido ("Más
+    recientes"): un selector con una sola opción no ordena nada.
+  - Scroll dentro de un recuadro de alto fijo en lugar de paginar: es lo que pidió el usuario y
+    mantiene visibles el resumen y los filtros.
+  - Mostrar la cantidad de cada calificación en su opción, para no ofrecer filtros que dejan la
+    lista vacía sin avisarlo.
+
+ERRORES DETECTADOS: síntoma: el detalle mostraba solo las 5 primeras opiniones y no había forma
+  de ver el resto. Causa: reviewsActividad.slice(0, 5). Corrección: lista completa con scroll.
+  Cómo se detectó: al implementar el pedido.
+
+CAPTURAS SUGERIDAS:
+  - "Opiniones de alumnos" con el filtro "5 ★" y "Mostrando 12 de 19 opiniones".
+  - La lista con su barra de desplazamiento.
+
+PENDIENTE QUE QUEDA: los pendientes abiertos del ESTADO GENERAL.
+
+================================================================================
+ENTRADA 007
+================================================================================
+FECHA: 24/10/2026
+
+REPOSITORIO: activehub-frontend
+
+RAMA Y COMMITS: main. Sin commit al momento de escribir esta entrada. Sin Pull Request.
+
+TIPO: interfaz.
+
+TÍTULO: Foto de fondo en el buscador del Home del alumno, y fecha del saludo con mayúscula
+  solo al principio.
+
+QUÉ CAMBIA PARA EL USUARIO: en el inicio del alumno, el recuadro con el saludo y el buscador
+  tiene ahora una foto de fondo (personas haciendo ejercicio al aire libre al atardecer, junto a
+  un lago y montañas), cubierta a la izquierda por un velo azul para que el texto se lea. En el
+  celular el velo es parejo. La fecha del saludo se escribe "Sábado, 24 de octubre" en lugar de
+  "Sábado, 24 De Octubre".
+
+TEXTOS DE INTERFAZ: sin textos nuevos. Cambia solo el uso de mayúsculas de la fecha del saludo:
+  "<Día de la semana>, <día> de <mes> · Mendoza" (por ejemplo "Sábado, 24 de octubre ·
+  Mendoza"). Sin cambios: "¡Hola, <nombre>! 👋", "¿Qué actividad querés hacer hoy?", el campo
+  "Meditación, running, trekking…", "Cerca tuyo · 5 km" y "Buscar".
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (24/10/2026) con un boceto del resultado y, después, la foto a usar.
+  - Imagen: public/home-hero.webp, provista por el usuario; 2000 × 668 px, 117.496 bytes, WebP.
+    No se recomprimió. Se publica en dist/ con el build.
+  - pages/alumno/Home.tsx: el recuadro pasa de linear-gradient(135deg,#0E2A47,#143A5E) con dos
+    manchas radiales decorativas a fondo #0E2A47 con dos capas: la foto (background-size
+    cover, anclada a la derecha) y el velo. La foto es decorativa y va como fondo CSS, no como
+    <img>. Los textos secundarios pasan de #9DB3C9 a #C3D2E0 y el saludo suma una sombra suave,
+    para que se lean sobre la foto.
+  - src/index.css: clase nueva .ah-home-hero-velo, un degradé de izquierda a derecha con los
+    azules de la marca (opacidad 0,95, 0,86, 0,5 y 0,18); por debajo de 820 px, un degradé
+    vertical parejo (0,84 a 0,7). Va en CSS porque necesita una media query.
+  - Fecha: lib/mockData.ts suma fechaSaludo(fecha), que pone en mayúscula solo la primera letra
+    de toLocaleDateString("es-AR"). Antes el estilo text-transform:capitalize ponía en
+    mayúscula cada palabra.
+
+ESTADO: IMPLEMENTADO. PROBADO: prueba automatizada de la fecha; el fondo se verificó en el
+  navegador montando el Home en una página aislada (sin sesión, por eso el saludo dice
+  "Alumno"), a 1200 y 1400 px y a 375 px de ancho: el texto se lee sobre el velo y la foto se
+  ve a la derecha; en celular, con el velo parejo, se ve la persona en primer plano. La página
+  aislada se borró. Falta verlo con una sesión real.
+
+HISTORIAS Y CRITERIOS: E3A-HU01 (Home del alumno): sin cambios de criterios; cambio visual.
+
+PANTALLAS: "Inicio" del alumno (E3A, código a confirmar).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 5. Alumno.
+
+CASOS DE USO: sin cambios.
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios. Ver DUDAS ABIERTAS sobre el origen y la licencia de la imagen.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - lib/mockData.test.ts suma "sólo la primera letra va en mayúscula" (fechaSaludo:
+    "Sábado, 24 de octubre" y "Lunes, 5 de enero"). El archivo queda con 11.
+  - Frontend completo (npx vitest run --maxWorkers=1, 24/10/2026): "Test Files  30 passed
+    (30)" y "Tests  210 passed (210)". Antes: 209.
+  - Manuales: verificación visual descripta en ESTADO.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto (incluye dist/home-hero.webp).
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios. La imagen es un archivo estático de public/.
+
+DECISIONES:
+  - Usar la imagen tal como la entregó el usuario: ya estaba en WebP y pesa 117 KB.
+  - Velo más denso a la izquierda (donde está el texto) y parejo en celular, como en el boceto.
+  - Quitar las manchas radiales decorativas del degradé anterior: sobre una foto se veían como
+    manchas.
+  - Fecha con mayúscula solo al principio, como corresponde en castellano.
+
+ERRORES DETECTADOS:
+  - Síntoma: la fecha del saludo decía "Sábado, 24 De Octubre". Causa: text-transform:
+    capitalize. Corrección: fechaSaludo(). Cómo se detectó: en la captura que mandó el usuario.
+  - Observado sin corregir (anterior a este cambio): en el celular, la barra del buscador del
+    Home no entra en el ancho: el campo de texto queda reducido a una letra y el botón "Buscar"
+    se sale del recuadro blanco.
+
+CAPTURAS SUGERIDAS:
+  - Inicio del alumno con la foto de fondo, en escritorio.
+  - El mismo recuadro en celular.
+
+PENDIENTE QUE QUEDA: los pendientes abiertos del ESTADO GENERAL.
+
+================================================================================
+ENTRADA 008
+================================================================================
+FECHA: 24/10/2026
+
+REPOSITORIO: activehub-frontend
+
+RAMA Y COMMITS: main. Sin commit al momento de escribir esta entrada. Sin Pull Request.
+
+TIPO: corrección de error (interfaz).
+
+TÍTULO: La barra del buscador del Home no entraba en el ancho de un celular.
+
+QUÉ CAMBIA PARA EL USUARIO: en el celular, el buscador del inicio del alumno se ve completo: el
+  campo de texto ocupa toda la fila de arriba y debajo están "Cerca tuyo · 5 km" y el botón
+  "Buscar", uno al lado del otro. Antes estaban los tres en una sola fila: el campo quedaba
+  reducido a una letra y el botón se salía del recuadro blanco. En la computadora no cambia.
+
+TEXTOS DE INTERFAZ: sin cambios ("Meditación, running, trekking…", "Cerca tuyo · 5 km",
+  "Buscar").
+
+DETALLE TÉCNICO:
+  - Observado al verificar la ENTRADA 007; el usuario pidió corregirlo.
+  - Causa: la barra era una fila flex sin posibilidad de partirse, dentro de un recuadro con
+    34 px de relleno vertical y 38 px horizontal; en 375 px de ancho le quedaban unos 240 px a
+    los tres elementos, y el campo de texto (un <input> sin min-width) no se achicaba bien.
+  - pages/alumno/Home.tsx: clases nuevas en el recuadro (ah-home-hero) y en la barra
+    (ah-buscador, ah-buscador-texto, ah-buscador-separador, ah-buscador-cerca); min-width:0 en
+    los dos bloques flexibles; "Cerca tuyo · 5 km" sin corte de línea; el botón no se encoge.
+  - src/index.css: por debajo de 560 px, el recuadro pasa a 24 px / 18 px de relleno, la barra
+    permite partirse en filas, el bloque del texto ocupa el 100 % con una línea inferior y se
+    oculta el separador vertical. Usa !important para pisar los estilos en línea, como el resto
+    de las reglas adaptables del archivo.
+
+ESTADO: IMPLEMENTADO. Verificado en el navegador en una página aislada con los proveedores
+  reales: a 375 px el campo mide 213 px, el texto de ejemplo se lee completo y el botón
+  "Buscar" queda dentro de la barra (borde derecho del botón en 321 px, de la barra en 329
+  px); a 700 px la barra sigue en una sola fila con todo adentro; a 375 px, escribir "yoga"
+  muestra el desplegable de resultados debajo de la barra. Sin prueba automatizada. La página
+  aislada se borró.
+
+HISTORIAS Y CRITERIOS: E3A-HU01 (Home del alumno): sin cambios de criterios.
+
+PANTALLAS: "Inicio" del alumno.
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 5. Alumno; 10. Búsqueda y Filtrado.
+
+CASOS DE USO: sin cambios.
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Automatizadas nuevas: ninguna. jsdom (el entorno de Vitest) no aplica media queries, así
+    que una prueba no puede comprobar el acomodo por ancho de pantalla.
+  - Frontend completo (npx vitest run --maxWorkers=1, 24/10/2026): "Test Files  30 passed
+    (30)" y "Tests  210 passed (210)", sin cambios.
+  - Manuales: verificación en el navegador descripta en ESTADO.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES: dos filas por debajo de 560 px (el mismo corte que ya usa index.css para celular)
+  en lugar de esconder "Cerca tuyo · 5 km", que es un atajo útil también en el teléfono.
+
+ERRORES DETECTADOS: el descrito en DETALLE TÉCNICO. Sigue vigente, aparte, el desborde de la
+  barra de navegación del alumno en pantallas angostas (DUDAS ABIERTAS, punto 7), que en el
+  celular ensancha la página.
+
+CAPTURAS SUGERIDAS: inicio del alumno en un celular, con el buscador en dos filas.
+
+PENDIENTE QUE QUEDA: los pendientes abiertos del ESTADO GENERAL.
+
+================================================================================
+ENTRADA 009
+================================================================================
+FECHA: 24/10/2026
+
+REPOSITORIO: activehub-frontend
+
+RAMA Y COMMITS: main. Sin commit al momento de escribir esta entrada. Sin Pull Request.
+
+TIPO: interfaz.
+
+TÍTULO: Foto de fondo en el banner del buscador de Explorar.
+
+QUÉ CAMBIA PARA EL USUARIO: en "Explorar", el banner con el título "Explorar actividades" y el
+  buscador tiene ahora una foto de fondo (un grupo entrenando en un parque, con pesas sobre el
+  pasto), cubierta a la izquierda por un velo azul para que el texto se lea, igual que el
+  buscador del inicio. En el celular el velo es parejo.
+
+TEXTOS DE INTERFAZ: sin cambios ("Explorar actividades", "Encontrá tu próxima actividad: filtrá
+  por categoría, tipo, nivel de exigencia y precio.", "Buscar por actividad o instructor…").
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (24/10/2026) con la imagen a usar.
+  - Imagen: public/explorar-hero.webp, provista por el usuario; 1024 × 434 px, 70.454 bytes,
+    WebP. No se recomprimió. Se publica en dist/ con el build.
+  - pages/alumno/Explorar.tsx: el banner pasa de linear-gradient(135deg,#143A5E,#0E2A47) a fondo
+    #0E2A47 con dos capas: la foto (background-size cover, background-position center 65 %,
+    para que entren el grupo y las pesas en la franja que muestra el banner) y el velo. El
+    subtítulo pasa de #9DB3C9 a #C3D2E0, el título suma una sombra suave y el buscador una
+    sombra, como en el Home.
+  - src/index.css: clase nueva .ah-explorar-hero-velo (degradé de izquierda a derecha con los
+    azules de la marca, opacidad 0,94, 0,82, 0,45 y 0,25; por debajo de 820 px, degradé
+    vertical parejo de 0,84 a 0,72).
+
+ESTADO: IMPLEMENTADO. Verificado en el navegador en una página aislada con los proveedores
+  reales: a 1280 px se ven el grupo y las pesas a la derecha y el texto y el buscador se leen
+  sobre el velo; a 375 px el texto se lee y la foto se ve detrás del velo. La página aislada se
+  borró. Falta verlo con una sesión real.
+
+HISTORIAS Y CRITERIOS: sin cambios de criterios; cambio visual.
+
+PANTALLAS: "Explorar" del alumno.
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 5. Alumno; 10. Búsqueda y Filtrado.
+
+CASOS DE USO: sin cambios.
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios. Ver DUDAS ABIERTAS sobre el origen y la licencia de la imagen.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Automatizadas nuevas: ninguna (cambio visual; jsdom no carga imágenes ni aplica media
+    queries).
+  - Frontend completo (npx vitest run --maxWorkers=1, 24/10/2026): "Test Files  30 passed
+    (30)" y "Tests  210 passed (210)", sin cambios.
+  - Manuales: verificación visual descripta en ESTADO.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto (incluye dist/explorar-hero.webp).
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES:
+  - Mismo tratamiento que el buscador del Home (ENTRADA 007), para que las dos pantallas se
+    vean de la misma familia.
+  - Encuadre center 65 %: el banner muestra una franja horizontal de la foto, y ese encuadre
+    deja a la vista el grupo y las pesas.
+
+ERRORES DETECTADOS: ninguno nuevo. Observación: el banner ocupa todo el ancho de la pantalla y
+  la imagen mide 1024 px; en monitores grandes se estira casi al doble (es una foto
+  desenfocada y va con velo, por eso se usó igual).
+
+CAPTURAS SUGERIDAS: "Explorar" con el banner con foto, en escritorio y en celular.
+
+PENDIENTE QUE QUEDA: los pendientes abiertos del ESTADO GENERAL.
+
+================================================================================
+ENTRADA 010
+================================================================================
+FECHA: 24/10/2026
+
+REPOSITORIO: activehub-frontend (código) y activehub-backend (copia del manual del asistente).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: cambio funcional.
+
+TÍTULO: Filtros rápidos del Home del alumno: de siete a tres (Categoría, Nivel y Precio), y
+  Precio con montos redondos.
+
+QUÉ CAMBIA PARA EL USUARIO: debajo del buscador del inicio quedan tres filtros rápidos,
+  "Categoría", "Nivel" y "Precio", en lugar de siete. Desaparecen "Tipo", "Ubicación", "Fecha"
+  y "Horario". Todos siguen disponibles en "Explorar", adonde lleva cada filtro rápido. Las
+  opciones de "Precio" pasan a ser montos redondos (por ejemplo "Hasta $5.000", "Hasta
+  $10.000") en lugar de montos calculados como "Hasta $9.500".
+
+TEXTOS DE INTERFAZ:
+  Retirados (botones de filtro rápido y sus opciones): "Tipo" (un nombre por tipo de
+    actividad); "Ubicación" ("A menos de 5 km", "A menos de 10 km", "A menos de 25 km");
+    "Fecha" ("Hoy", "Mañana", "Pasado mañana"); "Horario" ("Mañana", "Tarde", "Noche").
+  Vigentes: "Categoría" (una opción por categoría), "Nivel" (una por nivel presente en el
+    catálogo) y "Precio" ("Hasta $<monto>", hasta tres montos redondos).
+  Sin cambios: el atajo "Cerca tuyo · 5 km" del buscador.
+  Manual de usuario (las dos copias, idénticas), pantalla de inicio del alumno: "Filtros
+    rápidos: "Categoría", "Nivel" y "Precio" (montos redondos, por ejemplo "Hasta $5.000"); cada
+    opción conduce a la pantalla "Explorar" con el filtro ya aplicado, donde están el resto de
+    los filtros." (decía: "Filtros rápidos: conducen a la pantalla "Explorar" con el filtro ya
+    aplicado.").
+
+DETALLE TÉCNICO:
+  - Consulta del usuario (24/10/2026) sobre filtros del Home que no tenían sentido; se le dio
+    una opinión filtro por filtro y eligió dejar los tres propuestos.
+  - Motivos de cada retiro: "Tipo" se superponía con "Categoría" y listaba todos los tipos;
+    "Ubicación" duplicaba "Cerca tuyo · 5 km" del buscador y la sección "Cerca de tu
+    ubicación"; "Fecha" y "Horario" filtran por la próxima clase de cada actividad, así que una
+    actividad con clases hoy y mañana no aparecía en "Mañana".
+  - pages/alumno/Home.tsx: FILTROS_RAPIDOS queda con categoria, nivel y precio; se quitan la
+    función hoyLocal, los campos tipoActividadId, fecha y franja de FiltroRapido, y
+    tiposActividad de OpcionesFiltro y del useData. Explorar sigue aceptando todos esos filtros
+    por location.state (no se tocó).
+  - lib/precios.ts (nuevo): cortesDePrecio elige montos de una escala fija (1.000, 2.000, 3.000,
+    5.000, 8.000, 10.000, 15.000, 20.000, 30.000, 50.000, 75.000, 100.000, 200.000, 500.000 y
+    1.000.000) que separan el catálogo (al menos una actividad cuesta eso o menos y al menos
+    otra cuesta más), hasta tres repartidos a lo largo de la escala. Antes: cortes al 25, 50 y
+    75 % del precio máximo redondeados a 500.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas. No probado en el navegador.
+
+HISTORIAS Y CRITERIOS: E3A-HU01, criterio 1 (fila de filtros rápidos del Home): CAMBIA. Pedía
+  siete filtros rápidos; quedan tres (Categoría, Nivel y Precio). Hay que actualizar el
+  criterio en el informe.
+
+PANTALLAS: "Inicio" del alumno; "Manual de usuario" (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 5. Alumno; 10. Búsqueda y Filtrado; 15. Ayuda y Soporte al Usuario (manual).
+
+CASOS DE USO: sin cambios.
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: R05 (inconsistencias entre documentación y sistema): vigente hasta actualizar el
+  criterio 1 de E3A-HU01 en el informe. R10 (cambios de alcance): cambio de alcance menor,
+  decidido por el usuario.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Nuevas: lib/precios.test.ts (4 pruebas) y pages/alumno/Home.test.tsx (2 pruebas: "quedan
+    Categoría, Nivel y Precio" y "Precio ofrece montos redondos"). Contra la versión anterior
+    del Home las dos de Home.test.tsx fallan por lo esperado (aparece un filtro retirado; no
+    aparecen "Hasta $5.000" ni "Hasta $10.000").
+  - Frontend completo (npx vitest run --maxWorkers=1, 24/10/2026): "Test Files  32 passed
+    (32)" y "Tests  216 passed (216)". Antes: 210 en 30.
+  - Manual: frontend (lib/manual.test.ts y pages/public/Manual.test.tsx) "Tests  27 passed
+    (27)"; backend ManualUsuarioTest y PreguntarAlAsistenteServiceTest, "Tests run: 21,
+    Failures: 0, Errors: 0, Skipped: 0".
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES:
+  - Dejar Categoría, Nivel y Precio (decisión del usuario sobre la propuesta).
+  - Precio con montos redondos de una escala fija en lugar de porcentajes del precio máximo.
+  - No tocar Explorar: sigue aceptando los filtros retirados del Home, que el alumno puede
+    usar ahí.
+
+ERRORES DETECTADOS: los filtros "Fecha" y "Horario" prometían más de lo que hacían (solo miran
+  la próxima clase); quedan sin efecto en el Home. Siguen así en Explorar (ver la ENTRADA 002
+  y la explicación de las franjas).
+
+CAPTURAS SUGERIDAS: fila de filtros rápidos del Home con "Categoría", "Nivel" y "Precio", y el
+  desplegable de "Precio" con montos redondos.
+
+PENDIENTE QUE QUEDA: los pendientes abiertos del ESTADO GENERAL; actualizar el criterio 1 de
+  E3A-HU01 en el informe.
+
+================================================================================
+ENTRADA 011
+================================================================================
+FECHA: 24/10/2026
+
+REPOSITORIO: activehub-frontend (código) y activehub-backend (copia del manual del asistente).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: interfaz (cambio funcional).
+
+TÍTULO: Secciones de actividades del Home: hasta 6 actividades en una fila deslizable con
+  flechas.
+
+QUÉ CAMBIA PARA EL USUARIO: en el inicio del alumno, las secciones "Recomendado para vos",
+  "Cerca de tu ubicación" y "Próximas clases disponibles" muestran hasta 6 actividades en lugar
+  de 3. Se ven 3 a la vez y las demás se recorren con flechas a los costados, que aparecen solo
+  si hay más actividades hacia ese lado. En el celular no hay flechas: se ve una tarjeta, se
+  asoma la siguiente y la fila se desliza con el dedo. "Ver más →" y "Ver calendario →" siguen
+  igual.
+
+TEXTOS DE INTERFAZ:
+  Nuevos (nombres accesibles de las flechas, sin texto visible): "Ver anteriores de <sección>"
+    y "Ver más de <sección>"; cada fila se anuncia con el nombre de su sección.
+  Sin cambios: los títulos y subtítulos de las secciones, "Ver más →" y "Ver calendario →".
+  Manual de usuario (las dos copias, idénticas), pantalla de inicio del alumno, ítem nuevo:
+    "Secciones de actividades ("Recomendado para vos", "Cerca de tu ubicación" y "Próximas
+    clases disponibles"): cada una muestra hasta 6 actividades; se ven 3 y las demás se
+    recorren con las flechas que aparecen a los costados o, en el celular, deslizando la fila
+    con el dedo. "Ver más →" lleva a "Explorar"."
+
+DETALLE TÉCNICO:
+  - Propuesta del usuario (24/10/2026): mostrar hasta 6 por sección, deslizando hacia el
+    costado, con flechas.
+  - components/Carrusel.tsx (nuevo, reutilizable): fila con desplazamiento horizontal nativo
+    (overflow-x y scroll-snap); cada flecha avanza el ancho visible (scrollBy, desplazamiento
+    suave) y se muestra solo si hay contenido hacia ese lado. La medición se hace al
+    desplazarse y con un ResizeObserver (o, si no existe, con requestAnimationFrame y el evento
+    resize), nunca de forma síncrona dentro del efecto. La fila es una región con nombre y
+    tabIndex, así que también se recorre con el teclado.
+  - src/index.css: .ah-carrusel (3 columnas visibles con huecos de 20 px, barra de scroll
+    oculta), .ah-carrusel-item (alineación del scroll-snap) y, por debajo de 820 px, tarjetas al
+    78 % del ancho y flechas ocultas (.ah-carrusel-flecha).
+  - pages/alumno/Home.tsx: constante POR_SECCION = 6; las recomendaciones se piden con limite 6
+    (GET /api/alumno/recomendaciones acepta hasta 20, sin cambios en el backend); "cerca" y
+    "próximas clases" pasan de slice(0, 3) a slice(0, 6); las tres grillas pasan a Carrusel.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas. Verificado en el navegador en una
+  página aislada con el catálogo real ("Próximas clases disponibles" con 4 actividades): a
+  1280 px se ven 3 y aparece solo la flecha derecha; al presionarla la fila avanzó hasta el
+  final, quedaron visibles la segunda, la tercera y la cuarta, y quedó solo la flecha
+  izquierda. A 375 px cada tarjeta ocupa 249 de 319 px, se asoma la siguiente y no hay flechas.
+  "Recomendado para vos" y "Cerca de tu ubicación" no se pudieron ver con datos en esa página
+  (requieren sesión y ubicación). La página aislada se borró.
+
+HISTORIAS Y CRITERIOS: E3A-HU01 (Home del alumno): las secciones muestran hasta 6 actividades
+  (antes 3). Si el informe fija la cantidad, actualizarla.
+
+PANTALLAS: "Inicio" del alumno; "Manual de usuario" (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 5. Alumno; 10. Búsqueda y Filtrado.
+
+CASOS DE USO: sin cambios (recomendaractividades ya aceptaba el límite).
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios; sin dependencias nuevas (desplazamiento nativo del navegador).
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Nueva: components/Carrusel.test.tsx (4 pruebas: todas las tarjetas en una región con
+    nombre; flecha hacia adelante al principio que avanza de a una página; flecha hacia atrás
+    al final; sin flechas si todo entra). Simula las medidas de la fila porque jsdom no las
+    calcula.
+  - Home.test.tsx suma 2 ("pide hasta 6 recomendaciones" y "'Próximas clases disponibles' es
+    una fila deslizable con hasta 6 actividades"). El archivo queda con 4.
+  - Frontend completo (npx vitest run --maxWorkers=1, 24/10/2026): "Test Files  33 passed
+    (33)" y "Tests  222 passed (222)". Antes: 216 en 32.
+  - Manuales: verificación en el navegador descripta en ESTADO.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES:
+  - Desplazamiento nativo con scroll-snap en lugar de un carrusel dibujado a mano o una
+    librería: funciona con trackpad, dedo y teclado sin código extra.
+  - Flechas solo en escritorio; en el celular se desliza y se asoma la tarjeta siguiente.
+  - Las flechas avanzan una "página" (3 tarjetas), no de a una.
+  - Mantener "Ver más →" para ver todo en Explorar.
+
+ERRORES DETECTADOS: ninguno.
+
+CAPTURAS SUGERIDAS: "Próximas clases disponibles" con la flecha derecha y, después de
+  presionarla, con la flecha izquierda.
+
+PENDIENTE QUE QUEDA: los pendientes abiertos del ESTADO GENERAL; ver "Recomendado para vos" y
+  "Cerca de tu ubicación" con sesión y ubicación reales.
+
+================================================================================
+ENTRADA 012
+================================================================================
+FECHA: 24/10/2026
+
+REPOSITORIO: ambos (activehub-frontend y activehub-backend).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: nueva funcionalidad y cambio de interfaz.
+
+TÍTULO: Perfil del alumno: se retira el "Historial de actividades" y se puede ver y editar la
+  información de salud.
+
+QUÉ CAMBIA PARA EL USUARIO:
+  - En "Mi perfil" del alumno ya no aparece "Historial de actividades" (las últimas 4
+    inscripciones): esa información está completa en "Mis clases".
+  - Aparece la tarjeta "Información de salud", que muestra lo que el alumno respondió al
+    registrarse en "¿Padecés alguna enfermedad o lesión?" y permite cambiarlo. Antes ese dato no
+    se podía ver ni modificar después del alta, aunque lo usa el informe de beneficios y
+    prevenciones de cada actividad.
+  - En el registro, la ayuda de esa pregunta deja de decir que el dato ayuda al instructor (el
+    instructor no lo ve) y explica para qué se usa.
+
+TEXTOS DE INTERFAZ:
+  Retirados (perfil del alumno): "Historial de actividades" y "Todavía no tenés clases
+    registradas.".
+  Nuevos (tarjeta "Información de salud" del perfil del alumno):
+    - Título: "Información de salud". Botón "Editar".
+    - Texto: "Se usa para personalizar el informe de beneficios y prevenciones de cada actividad.
+      No la ven los instructores ni otros alumnos."
+    - Sin dato: "No informaste ninguna enfermedad ni lesión."
+    - Edición: etiqueta "¿Padecés alguna enfermedad o lesión?"; campo con el ejemplo "Ej: asma,
+      lesión de rodilla, ninguna…"; contador "<n>/500 · Dejalo vacío si no tenés nada que
+      informar."; botones "Cancelar" y "Guardar" ("Guardando…" mientras guarda).
+    - Éxito: "Información de salud actualizada.". Error: el mensaje del servidor o "No pudimos
+      guardar tu información de salud.".
+  Modificado (registro del alumno, ayuda de "¿Padecés alguna enfermedad o lesión?"): "Opcional.
+    Se usa para personalizar el informe de beneficios y prevenciones de cada actividad. Podés
+    cambiarlo después desde tu perfil." (decía: "Opcional. Ayuda al instructor a dar la clase de
+    forma segura para vos.").
+  Auditoría (columna "Detalle"): "<actor> actualizó su información de salud.".
+  Manual de usuario (las dos copias, idénticas):
+    - Apartado del registro, párrafo nuevo después de los pasos de la cuenta de Alumno: "El
+      formulario incluye además la pregunta opcional "¿Padecés alguna enfermedad o lesión?"
+      (hasta 500 caracteres). El dato se usa para personalizar el informe de beneficios y
+      prevenciones de cada actividad y puede cambiarse después desde el perfil."
+    - Apartado 1.4, párrafo nuevo: "El Alumno tiene además la tarjeta "Información de salud",
+      que muestra lo informado en "¿Padecés alguna enfermedad o lesión?". Para cambiarlo,
+      presionar "Editar", modificar el texto (hasta 500 caracteres; vacío si no hay nada que
+      informar) y presionar "Guardar"; el sistema confirma con "Información de salud
+      actualizada.". El dato se usa para personalizar el informe de beneficios y prevenciones de
+      cada actividad y no lo ven los instructores ni otros alumnos."
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (24/10/2026): sacar el historial del perfil, y si el dato que se carga en
+    el registro y usa el informe de beneficios debería poder editarse. Se confirmó con el usuario
+    que había que tocar el backend y eligió el caso de uso nuevo.
+  - Backend:
+    - Caso de uso NUEVO actualizarmicondicionsalud: PUT /api/usuarios/me/salud, cuerpo
+      {condicionSalud} con máximo 500 caracteres y sin HTML (@SinHtml); vacío o en blanco se
+      guarda como null; sin @PreAuthorize (dato de la propia cuenta, igual que
+      actualizarmisintereses); 404 si quien llama no tiene perfil de alumno.
+    - Audita con AuditAccion.CONDICION_SALUD_ACTUALIZADA (nuevo) sin guardar el contenido.
+    - obtenerusuarioactual (GET /api/auth/me) devuelve condicionSalud (null para quien no tiene
+      perfil de alumno).
+    - Sin migración: la columna perfil_alumno.condicion_salud ya existía.
+  - Frontend:
+    - context/AuthContext.tsx: lee condicionSalud de /api/auth/me al iniciar sesión, al
+      recuperar la sesión y al entrar con Google; función nueva actualizarMiCondicionSalud que
+      actualiza currentUser.
+    - pages/alumno/Perfil.tsx: se quitan el bloque del historial y lo que solo usaba él; se
+      agrega InformacionSaludCard.
+    - pages/auth/Registro.tsx: nuevo texto de ayuda de la pregunta de salud.
+  - Hallazgo: el texto del registro decía que el dato ayudaba al instructor, pero ningún
+    endpoint se lo muestra al instructor; solo lo leen el registro y el informe con IA.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas en los dos repositorios. No probado en
+  el navegador.
+
+HISTORIAS Y CRITERIOS: E3A-HU12 (perfil del alumno): criterio NUEVO propuesto: "el alumno puede
+  ver y editar su información de salud". Si algún criterio pedía el historial de actividades en
+  el perfil, queda RETIRADO (se cubre en "Mis clases").
+
+PANTALLAS: "Mi perfil" del alumno (E3A, código a confirmar); registro (E1A, texto de ayuda);
+  "Manual de usuario" (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: sin reglas nuevas. Se mantiene que el informe de beneficios no es una
+  indicación médica.
+
+MÓDULOS: 5. Alumno; 1. Autenticación y Control de Acceso (registro, texto); 4. Auditoría y
+  Trazabilidad (acción nueva); 15. Ayuda y Soporte al Usuario (manual).
+
+CASOS DE USO: de 112 a 113. NUEVO: actualizarmicondicionsalud. Modificados:
+  obtenerusuarioactual (campo nuevo) y listarauditoria (descripción de la acción nueva).
+
+ENTIDADES Y MIGRACIONES: sin cambios de esquema (perfil_alumno.condicion_salud ya existía).
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: R05 (inconsistencias entre documentación y sistema): se corrige un texto de interfaz
+  que atribuía al instructor el acceso a un dato de salud que no tiene.
+
+SEGURIDAD: el dato de salud solo lo puede leer y editar su dueño (sale del token, nunca del
+  cuerpo); la auditoría registra el hecho sin el contenido; el texto se valida contra HTML.
+
+PRUEBAS:
+  - Backend, nuevas: ActualizarMiCondicionSaludServiceTest (3: guarda recortado y audita sin el
+    contenido; en blanco borra; sin perfil de alumno da 404 y no audita) y
+    ActualizarMiCondicionSaludControllerTest (4: 200; más de 500 caracteres da 400; con HTML da
+    400; sin perfil 404). ObtenerUsuarioActualServiceTest amplía dos pruebas con condicionSalud.
+    DescripcionAuditoriaTest suma un caso por la acción nueva (prueba parametrizada sobre el
+    enum).
+  - Backend completo (JAVA_HOME=$HOME/.jdks/jdk-21.0.12+8 ./mvnw -B test, 24/10/2026): "Tests
+    run: 1016, Failures: 0, Errors: 0, Skipped: 2", "BUILD SUCCESS", 01:38 min. Antes: 1008.
+  - Frontend, nueva: pages/alumno/Perfil.test.tsx (3: sin historial; muestra el dato y aclara
+    quién lo usa; se edita y se guarda recortado).
+  - Frontend completo (npx vitest run --maxWorkers=1, 24/10/2026): "Test Files  34 passed
+    (34)" y "Tests  225 passed (225)". Antes: 222 en 33.
+  - Manual: frontend "Tests  27 passed (27)"; backend ManualUsuarioTest y
+    PreguntarAlAsistenteServiceTest, "Tests run: 21, Failures: 0, Errors: 0, Skipped: 0".
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin variables nuevas. Hay que reiniciar el backend para tomar el
+  endpoint nuevo.
+
+DECISIONES:
+  - Caso de uso propio (decisión del usuario) en lugar de sumar el campo a actualizarmiperfil,
+    que atiende a los tres roles; sigue el mismo patrón que actualizarmisintereses.
+  - Auditar sin el contenido, por ser un dato de salud.
+  - Corregir el texto de ayuda del registro, que no estaba en el pedido, porque describía mal
+    quién accede al dato.
+
+ERRORES DETECTADOS: el texto de ayuda del registro decía que el dato de salud ayudaba al
+  instructor, que no tiene acceso a él. Corregido.
+
+CAPTURAS SUGERIDAS: perfil del alumno con la tarjeta "Información de salud" en modo lectura y
+  en modo edición.
+
+PENDIENTE QUE QUEDA: probar en el navegador con una cuenta de alumno (reiniciar el backend).
+
+================================================================================
+ENTRADA 013
+================================================================================
+FECHA: 24/10/2026
+
+REPOSITORIO: activehub-frontend (código) y activehub-backend (copia del manual del asistente).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: interfaz (cambio funcional menor).
+
+TÍTULO: Paginación en Explorar; paginación y filtros en Favoritos y en Mis clases.
+
+QUÉ CAMBIA PARA EL USUARIO:
+  - Explorar: los resultados se muestran de a 12 por página, con los controles de paginación al
+    pie. Cualquier cambio de filtro u orden vuelve a la página 1, y cambiar de página sube a los
+    resultados. Antes se mostraba el catálogo entero en una sola lista.
+  - Favoritos: de a 12 por página, con un buscador por actividad o instructor (sin tildes),
+    filtros por categoría y por nivel (solo los de las propias favoritas, y solo si hay más de
+    uno), "Ordenar por" y un contador. Quitar un favorito no vuelve a la página 1. Antes no había
+    ni filtros ni paginación.
+  - Mis clases: barra de filtros arriba de las pestañas, que vale para todas ("Todas",
+    "Preinscripto", "Pago pendiente", "Inscripto", "Finalizadas", "Canceladas"): búsqueda por
+    actividad, rango de fechas "Desde"/"Hasta" y "Ordenar por". Los contadores de las pestañas
+    cuentan lo filtrado. Cada pestaña muestra 10 clases por página. Si se llega desde una
+    notificación, la pantalla abre en la página donde está la clase indicada (si no, con la
+    paginación el resaltado podía quedar en otra página).
+  - Los controles de paginación son los ya existentes (components/Paginacion.tsx) y no aparecen
+    cuando hay una sola página.
+
+TEXTOS DE INTERFAZ:
+  Sin cambios (componente compartido): "« Primera", "Anterior", "Página <n> de <total>",
+    "Siguiente", "Última »", y la ayuda "Escribir el número de página".
+  Nuevos en Favoritos:
+    - Buscador: "Buscar por actividad o instructor…".
+    - "Ordenar por", con las opciones "Nombre" (por defecto), "Precio: menor", "Precio: mayor",
+      "Mejor valoradas" y "Próxima clase".
+    - Filas de chips "Categoría" ("Todas" y las categorías) y "Nivel" ("Todos" y los niveles).
+    - Contador: "<n> favoritas" ("1 favorita"); con filtros, "<n> favoritas de <total>".
+    - Enlace "Limpiar filtros".
+    - Sin coincidencias: "Ninguna de tus favoritas coincide con la búsqueda."
+  Nuevos en Mis clases:
+    - Campos "Actividad" (ejemplo "Buscar por actividad…"), "Desde", "Hasta" y "Ordenar por",
+      con las opciones "Más recientes primero" (por defecto) y "Próximas primero".
+    - Enlace "Limpiar filtros".
+    - Sin coincidencias con filtros: "Ninguna clase de esta categoría coincide con los
+      filtros." (sin filtros sigue "No hay clases en esta categoría.").
+  Manual de usuario (activehub-frontend/src/lib/manual.ts y
+    activehub-backend/src/main/resources/manual/manual-usuario-activehub.txt, idénticos), tres
+    párrafos nuevos:
+    - Apartado 2.2, después del de los filtros: "Los resultados se muestran de a 12 por página,
+      con los controles de paginación al pie de la lista: primera página, anterior, el número de
+      página (se puede escribir para ir directo a otra), siguiente y última. Cualquier cambio en
+      los filtros o en el orden vuelve a la primera página."
+    - Apartado 2.4, después de la tabla: "La pantalla "Favoritos" de la barra superior reúne
+      las actividades marcadas como favoritas, 12 por página. Arriba de la lista se puede buscar
+      por actividad o instructor ("Buscar por actividad o instructor…"), filtrar por categoría y
+      por nivel (se ofrecen los de las propias favoritas, cuando hay más de uno) y elegir el
+      orden con "Ordenar por": "Nombre" (la opción inicial), "Precio: menor", "Precio: mayor",
+      "Mejor valoradas" o "Próxima clase". Con un filtro aplicado se indica cuántas se muestran
+      sobre el total (por ejemplo, "3 favoritas de 14") y aparece el enlace "Limpiar filtros";
+      si ninguna coincide, se muestra "Ninguna de tus favoritas coincide con la búsqueda." El
+      botón "Quitar de favoritos", debajo de cada tarjeta, la retira de la lista sin cambiar de
+      página."
+    - Apartado 2.7, después de la lista de acciones: "Sobre las pestañas hay una barra de
+      filtros que se aplica a cualquiera de ellas: "Actividad" (busca por el nombre de la
+      actividad), "Desde" y "Hasta" (el día de la clase) y "Ordenar por", con las opciones "Más
+      recientes primero" (la inicial) y "Próximas primero", que muestra primero las clases que
+      todavía no empezaron, de la más cercana a la más lejana, y después las ya dictadas. Los
+      contadores de las pestañas se calculan con los filtros aplicados, y el enlace "Limpiar
+      filtros" los restablece. Si ninguna clase de la pestaña coincide, se muestra "Ninguna
+      clase de esta categoría coincide con los filtros." Cada pestaña muestra 10 clases por
+      página; al llegar desde una notificación, la pantalla abre en la página donde está la
+      clase indicada y la resalta."
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (24/10/2026): "quiero que en explorar agregues paginacion. En favoritos
+    agregues paginacion y filtros. En Mis clases agrega paginacion y filtros en todas las
+    subsecciones". Confirmado con "si hacelo". Sin cambios de backend: todo se filtra y pagina
+    en el cliente, como el resto del proyecto.
+  - lib/paginado.ts (usePaginado) suma dos parámetros opcionales, ambos derivados y sin
+    efectos:
+    - claveReinicio: si cambia (una firma de los filtros), se vuelve a la página 1.
+    - paginaPreferida: la página que se muestra mientras el usuario no eligió ninguna.
+    Las pantallas que ya lo usaban no cambian (los parámetros son opcionales).
+  - pages/alumno/Explorar.tsx: 12 por página; la clave de reinicio son los ids de la lista
+    filtrada, así que cualquier filtro u orden reinicia sin tocar cada uno; al cambiar de página
+    se scrollea al contenedor de resultados (scroll-margin-top de 90 px por la barra superior).
+  - pages/alumno/Favoritos.tsx: 12 por página (3 filas de la grilla de 4 columnas); filtros en
+    un useMemo; la clave de reinicio son los filtros, no la lista, para que quitar un favorito
+    no mande a la página 1.
+  - pages/alumno/MisClases.tsx: 10 por página; los filtros se aplican antes de repartir en
+    pestañas, así los contadores coinciden con lo que se ve; la clave de reinicio incluye la
+    pestaña; la paginaPreferida sale del índice de la fila que busca la notificación
+    (?inscripcion= o ?clase=). El botón "Calificar mis clases" sigue mirando todas las
+    inscripciones, para que un filtro no lo oculte.
+  - Las fechas "Desde"/"Hasta" se comparan contra el día LOCAL de la clase, no contra la fecha
+    UTC del ISO, que corría el día en clases de la noche.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas. No probado en el navegador.
+
+HISTORIAS Y CRITERIOS: criterios NUEVOS propuestos: Explorar (E3A, código a confirmar):
+  "los resultados se paginan de a 12"; Favoritos (E3A, código a confirmar): "el alumno puede
+  buscar, filtrar y ordenar sus favoritos, paginados de a 12"; Mis clases (E3A, código a
+  confirmar): "el alumno puede filtrar por actividad, por rango de fechas y ordenar, en todas
+  las pestañas, paginadas de a 10".
+
+PANTALLAS: Explorar, Favoritos y Mis clases del alumno (E3A, códigos a confirmar); "Manual de
+  usuario" (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 5. Alumno; 15. Ayuda y Soporte al Usuario (manual).
+
+CASOS DE USO: sin cambios (113).
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios (los datos ya llegaban a la pantalla; solo cambia cómo se muestran).
+
+PRUEBAS:
+  - lib/paginado.test.ts: 2 nuevas (cambiar la clave vuelve a la página 1; la página
+    preferida se muestra hasta que el usuario navega). Total del archivo: 6.
+  - pages/alumno/Explorar.test.tsx: 2 nuevas (12 por página; un filtro nuevo vuelve a la
+    página 1). Total: 6.
+  - pages/alumno/Favoritos.test.tsx, NUEVO (5): 12 por página ordenadas por nombre; busca por
+    instructor sin tildes y muestra "de 14"; filtros por categoría y nivel; mensaje sin
+    coincidencias; quitar un favorito no vuelve a la página 1.
+  - pages/alumno/MisClases.test.tsx, NUEVO (5): 10 por página; la búsqueda filtra sin tildes y
+    los contadores la siguen; Desde/Hasta por día; "Próximas primero"; desde una notificación
+    abre en la página de la fila.
+  - Frontend completo (npx vitest run --maxWorkers=1, 24/10/2026): "Test Files  36 passed
+    (36)" y "Tests  239 passed (239)". Antes: 225 en 34.
+  - Manual: frontend (npx vitest run src/lib/manual) "Tests  15 passed (15)"; backend
+    (./mvnw -B -q test -Dtest=ManualUsuarioTest) 9 pruebas, 0 fallas, 0 errores.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios. Para que el asistente use el manual nuevo hay que
+  reiniciar el backend.
+
+DECISIONES:
+  - 12 por página en las dos grillas (Explorar en 3 columnas y Favoritos en 4 dan filas
+    completas) y 10 en Mis clases, que es una lista, igual que Reclamos y Gestión de denuncias.
+  - Filtros de Favoritos iguales a los del perfil público del instructor (ENTRADA 004), para
+    que las dos listas de actividades se usen igual.
+  - En Mis clases los filtros son comunes a todas las pestañas en lugar de uno por pestaña:
+    así "en todas las subsecciones" no obliga a volver a filtrar al cambiar de pestaña.
+  - Sin filtro de estado en Mis clases: ya lo hacen las pestañas.
+
+ERRORES DETECTADOS: ninguno nuevo en la aplicación. Al escribir la prueba de Favoritos, un mock
+  de useAuth que devolvía un objeto nuevo en cada render recargaba los favoritos en cada render
+  y hacía reaparecer el que se quitaba: se corrigió el mock (valor estable, como el contexto
+  real), no la pantalla.
+
+CAPTURAS SUGERIDAS: Explorar con la paginación al pie; Favoritos con un filtro aplicado y el
+  contador "de <total>"; Mis clases con la barra de filtros y los contadores filtrados.
+
+PENDIENTE QUE QUEDA: probar en el navegador con una cuenta de alumno.
+
+================================================================================
+ENTRADA 014
+================================================================================
+FECHA: 25/10/2026
+
+REPOSITORIO: ambos (activehub-frontend y activehub-backend).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: corrección de error e interfaz.
+
+TÍTULO: Carrusel de fotos en el detalle de una actividad; cambiar la portada ya no borra una
+  foto de la galería.
+
+QUÉ CAMBIA PARA EL USUARIO:
+  - Alumno, detalle de una actividad: las fotos se recorren en el recuadro grande con flechas
+    a los costados (vuelven al principio al llegar al final), un contador "N / M", miniaturas
+    debajo (la elegida queda marcada), las flechas del teclado y el deslizamiento con el dedo
+    en el celular. Primero se ve la portada y después el resto de la galería, sin repetir
+    ninguna. Una foto que no carga desaparece en lugar de mostrar el ícono de imagen rota.
+  - Antes: solo había miniaturas (y solo con dos fotos o más), sin flechas ni contador; la
+    portada se veía repetida en la primera miniatura; una portada subida aparte no volvía a
+    verse después de tocar una miniatura; y la foto elegida podía pasar a otra actividad.
+  - Instructor: cambiar la portada con "Cambiar foto" ya no borra la primera foto de la
+    galería. Antes la borraba (comparten el archivo) y al alumno le quedaba una miniatura rota.
+
+TEXTOS DE INTERFAZ:
+  Nuevos (carrusel del detalle):
+    - Contador: "<n> / <total>".
+    - Nombres accesibles: "Fotos de <actividad>" (región), "Foto anterior", "Foto siguiente",
+      "Ver foto <n> de <total>" (cada miniatura) y, para la foto grande, "<actividad>, foto
+      <n> de <total>".
+  Sin cambios: "FOTO · <actividad>" cuando no hay ninguna foto; en el formulario del
+    instructor, "Cambiar foto", "Agregar foto", "Portada. JPG o PNG. Podés cambiarla cuando
+    quieras." y "Hasta 6 imágenes. La primera que subas queda además como portada.".
+  Manual de usuario (las dos copias, idénticas):
+    - Apartado 2.3, párrafo nuevo antes del del importe: "Las fotos de la actividad se recorren en el recuadro grande del encabezado: primero la portada y después el resto de la galería, sin repetir ninguna. Con más de una foto aparecen las flechas a los costados, el contador (por ejemplo, "2 / 5") y las miniaturas debajo, que permiten elegir una foto directamente; también se puede avanzar con las flechas del teclado o deslizando con el dedo en el celular. Una foto que no puede cargarse no se muestra."
+    - Apartado del alta de actividad, paso 3 (decía "Cargar las imágenes de la actividad: se
+      admiten hasta seis, y la primera se utiliza como portada."): "Cargar las imágenes de la
+      actividad: se admiten hasta seis, y la primera se utiliza como portada. La portada puede
+      cambiarse después con "Cambiar foto" sin que esa primera imagen salga de la galería."
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (25/10/2026): revisar el carrusel de fotos de una actividad vista como
+    alumno. Se le avisó antes de tocar el backend y eligió corregir frontend y backend.
+  - Causa del archivo borrado: agregarimagenactividad pone la primera imagen de la galería como
+    portada (actividad.foto_path = mismo archivo). subirfotoactividad, al reemplazar la portada,
+    borraba siempre el archivo anterior, también cuando era el de esa imagen de la galería: la
+    fila de actividad_imagen quedaba apuntando a un archivo inexistente y
+    GET /api/fotos/actividad/imagen/{id} respondía 404.
+  - Backend:
+    - ActividadImagenRepository: existsByActividadIdAndPath (consulta derivada nueva).
+    - SubirFotoActividadService: solo borra el archivo anterior si no pertenece a la galería.
+      Recibe ActividadImagenRepository en el constructor.
+    - GET /api/actividades/{id} (obteneractividad): campos nuevos tienePortada (boolean) y
+      portadaImagenId (id de la imagen de la galería que comparte archivo con la portada, o
+      null).
+  - Frontend:
+    - lib/galeria.ts (NUEVO): fotosDeActividad arma la lista sin repetidas: la portada primero
+      (si es de la galería, en su lugar; si se subió aparte, delante de toda la galería) y
+      después el resto.
+    - components/GaleriaActividad.tsx (NUEVO): el carrusel. Guarda la clave de la foto elegida
+      y deriva el índice; las fotos que fallan al cargar se sacan de la lista.
+    - pages/alumno/Detalle.tsx: usa el carrusel con key = id de la actividad; se retiró el
+      estado imagenActiva.
+    - context/DataContext.tsx y lib/types.ts: los dos campos nuevos del detalle.
+  - Datos existentes: las actividades cuya primera foto ya se perdió siguen teniendo esa fila en
+    la galería sin archivo. El carrusel la oculta; el instructor puede quitarla desde el
+    formulario y volver a subirla. No se consultó la base para contarlas.
+
+ESTADO: corregido e IMPLEMENTADO; PROBADO con pruebas automatizadas en los dos repositorios. El
+  carrusel se verificó en el navegador en una página aislada con dos fotos y una rota (en 1280 y
+  en 375 px: la rota se descartó, el contador pasó a "1 / 2", la flecha avanzó y no hubo
+  desborde horizontal). No probado dentro de la aplicación con una actividad real.
+
+HISTORIAS Y CRITERIOS: sin criterios nuevos; corrige el comportamiento de la galería del
+  detalle (sección 2 de la especificación, "imagenes[]").
+
+PANTALLAS: detalle de una actividad del alumno (E3A, código a confirmar); "Manual de usuario"
+  (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 7. Actividades; 5. Alumno; 15. Ayuda y Soporte al Usuario (manual).
+
+CASOS DE USO: sin altas ni bajas (113). Modificados: subirfotoactividad y obteneractividad.
+
+ENTIDADES Y MIGRACIONES: sin cambios de esquema.
+
+TECNOLOGÍAS: sin cambios; sin dependencias nuevas (el carrusel no usa librerías).
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios (las fotos ya eran públicas, como el resto del catálogo).
+
+PRUEBAS:
+  - Backend: SubirFotoActividadServiceTest suma 2 (la portada anterior de la galería no se
+    borra; la subida aparte sí); ObtenerActividadServiceTest suma 2 (informa la imagen que es
+    portada; con portada aparte, portadaImagenId null).
+  - Backend completo (JAVA_HOME=$HOME/.jdks/jdk-21.0.12+8 ./mvnw -B test, 25/10/2026): "Tests
+    run: 1020, Failures: 0, Errors: 0, Skipped: 2", "BUILD SUCCESS". Antes: 1016.
+  - Frontend, nuevas: lib/galeria.test.ts (5) y components/GaleriaActividad.test.tsx (6:
+    flechas en círculo con contador; miniatura marcada; teclado; deslizamiento; foto rota
+    descartada; una sola foto y ninguna). Detalle.test.tsx: sin cambios de casos (se quitó un
+    mock que ya no se usa).
+  - Frontend completo (npx vitest run --maxWorkers=1, 25/10/2026): "Test Files  38 passed
+    (38)" y "Tests  250 passed (250)". Antes: 239 en 36.
+  - Manual: frontend (npx vitest run src/lib/manual src/pages/public) "Tests  40 passed
+    (40)"; backend ManualUsuarioTest (9) y PreguntarAlAsistenteServiceTest (12), 0 fallas.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin variables nuevas. Hay que reiniciar el backend para que el
+  detalle traiga los campos nuevos; sin reiniciar, el carrusel igual funciona pero puede
+  repetir la portada.
+
+DECISIONES:
+  - Corregir en el backend (decisión del usuario) y no solo ocultar la miniatura rota: el
+    archivo se perdía de verdad.
+  - Que el detalle diga cuál imagen es la portada (portadaImagenId) en lugar de comparar
+    archivos en el cliente, que no conoce las rutas.
+  - Flechas circulares y sin pasar solas (sin reproducción automática): el alumno mira a su
+    ritmo.
+
+ERRORES DETECTADOS: cambiar la portada borraba el archivo de la primera imagen de la galería;
+  la portada se mostraba repetida; una portada subida aparte se perdía al tocar una miniatura;
+  la foto elegida no se reiniciaba al cambiar de actividad. Corregidos.
+
+CAPTURAS SUGERIDAS: detalle de una actividad con varias fotos, mostrando las flechas, el
+  contador y las miniaturas, en escritorio y en celular.
+
+PENDIENTE QUE QUEDA: probarlo con una actividad real (reiniciar el backend); revisar si hay
+  actividades con una foto de la galería ya perdida para que el instructor la vuelva a subir.
+
+================================================================================
+ENTRADA 015
+================================================================================
+FECHA: 25/10/2026
+
+REPOSITORIO: activehub-frontend.
+
+RAMA Y COMMITS: main. Sin commit al momento de escribir esta entrada. Sin Pull Request.
+
+TIPO: interfaz.
+
+TÍTULO: El panel izquierdo del Login lleva la ilustración de ActiveHub de fondo.
+
+QUÉ CAMBIA PARA EL USUARIO: en "Iniciar sesión", el panel izquierdo muestra la ilustración
+  provista por el usuario (deportistas, instructores, íconos de actividades y el logo de
+  ActiveHub arriba a la izquierda) en lugar del degradé azul con manchas de color, con un velo
+  oscuro a la izquierda para que el texto se lea. El texto no cambia. Como la ilustración ya trae
+  el logo, el panel deja de dibujar el suyo; tocar el logo de la imagen sigue llevando al
+  inicio. En el celular el panel queda arriba del formulario, sin ocupar toda la pantalla, y el
+  velo es más claro arriba para que se vea el logo.
+
+TEXTOS DE INTERFAZ:
+  Sin cambios: "Tu próxima clase está a un clic de distancia", "Ingresá para ver tus
+    inscripciones, anotarte en nuevas clases y descubrir actividades cerca tuyo.", "Inscribite y
+    pagá en pocos pasos", "Cupos y horarios en tiempo real", "Calificá y comentá tus
+    actividades".
+  Retirado: el logotipo dibujado del panel ("A" + "ActiveHub"); lo reemplaza el de la imagen.
+  Nuevo (nombre accesible del enlace sobre el logo): "ActiveHub, ir al inicio".
+  Manual de usuario: sin cambios.
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (25/10/2026), con dos imágenes: la ilustración sola y una maqueta del
+    resultado esperado.
+  - public/login-fondo.webp (NUEVO): la ilustración de 2000x2000 px pasada a 1600x1600 WebP
+    calidad 78, 54 KB.
+  - pages/auth/Login.tsx: se quitan las cuatro capas de degradé y el logotipo; quedan la capa
+    .ah-login-fondo con el enlace .ah-login-logo y el velo .ah-login-velo.
+  - index.css: .ah-login-fondo es un cuadrado del tamaño del lado más largo del panel
+    (min-width y min-height al 100% con aspect-ratio 1/1), anclado arriba a la izquierda; hace
+    lo mismo que background-size: cover pero permite ubicar el enlace del logo en porcentajes
+    de la imagen (left 4%, top 4%, ancho 26%, alto 7%), así queda siempre encima del logo. Por
+    debajo de 820 px: sin alto mínimo, relleno superior de 110 px para no tapar el logo y velo
+    vertical.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas; verificado en el navegador dentro de
+  la aplicación (servidor de desarrollo del usuario, /login): a 1440x900 el panel mide 751x900,
+  el cuadrado del fondo 900x900 y el enlace cubre el logo; a 375 px no hay desborde horizontal y
+  el clic en el logo llevó a "/".
+
+HISTORIAS Y CRITERIOS: sin cambios (presentación).
+
+PANTALLAS: Login (E1A, código a confirmar).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 1. Autenticación y Control de Acceso (presentación).
+
+CASOS DE USO: sin cambios.
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Frontend, nueva: pages/auth/Login.test.tsx (2: los textos del panel se mantienen; el enlace
+    del logo lleva al inicio).
+  - Frontend completo (npx vitest run --maxWorkers=1, 25/10/2026): "Test Files  39 passed
+    (39)" y "Tests  252 passed (252)". Antes: 250 en 38.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES:
+  - Usar el logo que ya trae la ilustración, como en la maqueta, y no dibujar otro encima.
+  - Fondo CSS y no <img>: es decorativa.
+  - El texto de la maqueta se mantiene tal cual estaba en la pantalla; la marca de agua
+    "ActiveHub" que aparece debajo del texto en la maqueta no está en la ilustración y no se
+    agregó.
+
+ERRORES DETECTADOS: ninguno.
+
+CAPTURAS SUGERIDAS: Login en escritorio y en celular.
+
+PENDIENTE QUE QUEDA: registrar el origen y la licencia de public/login-fondo.webp (ver DUDAS
+  ABIERTAS, punto 8).
+
+================================================================================
+ENTRADA 016
+================================================================================
+FECHA: 25/10/2026
+
+REPOSITORIO: activehub-frontend (código) y activehub-backend (copia del manual del asistente).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: interfaz (cambio funcional menor).
+
+TÍTULO: Pantallas del instructor: paginación, scroll y búsqueda en Historial; paginación y
+  scroll en Próximas clases; 12 por página y búsqueda en Mis actividades; filtros en Reseñas.
+
+QUÉ CAMBIA PARA EL USUARIO:
+  - Historial: 10 clases por página, la lista se desplaza dentro de su propio recuadro y hay
+    una lupa para buscar por nombre de la actividad o por fecha. Los contadores de los filtros
+    de estado ("Todas (n)", "Finalizadas (n)", "Canceladas (n)") cuentan lo que se está
+    buscando.
+  - Próximas clases: 10 clases por página y la lista con su propio recuadro con scroll. Si un
+    día sigue en la página siguiente, su fecha se repite arriba.
+  - Mis actividades: 12 actividades por página y una barra de búsqueda por nombre, categoría,
+    tipo o nivel, con el contador "<n> de <total> actividades".
+  - Reseñas: arriba de la lista de la actividad elegida, filtros por estado y por calificación
+    (cada opción con su cantidad), "Ordenar por" y "Limpiar filtros", igual que las opiniones
+    del detalle de una actividad que ve el alumno. La lista tiene su propio scroll.
+  - Antes ninguna de las cuatro pantallas paginaba ni buscaba: se mostraba todo.
+
+TEXTOS DE INTERFAZ:
+  Paginación (componente compartido, sin cambios): "« Primera", "Anterior", "Página <n> de
+    <total>", "Siguiente", "Última »".
+  Nuevos, Historial:
+    - Campo con lupa: "Buscar por actividad o fecha (ej. 24/10)" (nombre accesible "Buscar
+      clases"); botón para limpiar con nombre accesible "Limpiar búsqueda".
+    - Sin coincidencias, sin cambios: "No hay clases con esos filtros.".
+  Nuevos, Mis actividades:
+    - Campo con lupa: "Buscar por nombre, categoría, tipo o nivel" (nombre accesible "Buscar
+      actividades").
+    - Contador: "<n> actividades" / "1 actividad"; con búsqueda, "<n> de <total> actividades".
+    - Sin coincidencias: "Ninguna de tus actividades coincide con la búsqueda.".
+  Nuevos, Reseñas:
+    - "Estado": "Todas", "Sin responder", "Respondidas", "Denunciadas", "Ocultas", cada uno con
+      "(<n>)".
+    - "Calificación": "Todas" y de 5 a 1 estrella, cada una con "(<n>)".
+    - "Ordenar por": "Más recientes" (por defecto), "Más antiguas", "Mejor calificación", "Peor
+      calificación".
+    - Contador: "Mostrando las <n> reseñas" / "Mostrando 1 reseña"; con filtros, "Mostrando <n>
+      de <total> reseñas", y el enlace "Limpiar filtros".
+    - Sin coincidencias: "Ninguna reseña de esta actividad coincide con los filtros.".
+  Manual de usuario (las dos copias, idénticas), tres párrafos nuevos:
+    - Apartado 3.3, después del párrafo del precio: "La pantalla "Mis actividades" muestra 12 actividades por página, con los controles de paginación al pie. La barra "Buscar por nombre, categoría, tipo o nivel" filtra mientras se escribe e indica cuántas coinciden (por ejemplo, "3 de 14 actividades"); si ninguna coincide, se muestra "Ninguna de tus actividades coincide con la búsqueda."."
+    - Apartado 3.8, al final: "Las dos listas muestran 10 clases por página, con los controles de paginación al pie, y se desplazan dentro de su propio recuadro. En "Próximas clases", si un día continúa en la página siguiente, su fecha se repite arriba. En el historial, la lupa "Buscar por actividad o fecha (ej. 24/10)" filtra por el nombre de la actividad o por la fecha de la clase, escrita en números ("24/10" o "24/10/2026") o con palabras ("sáb 24 oct", "24 de octubre"); la cruz del campo limpia la búsqueda. La cantidad de clases de cada estado se calcula también sobre lo que se está buscando."
+    - Apartado 3.10, al final: "Encima de la lista, las reseñas de la actividad seleccionada se pueden filtrar por "Estado" ("Todas", "Sin responder", "Respondidas", "Denunciadas" u "Ocultas") y por "Calificación" ("Todas" o de 5 a 1 estrella), cada opción con su cantidad, y ordenar con "Ordenar por": "Más recientes" (la opción inicial), "Más antiguas", "Mejor calificación" o "Peor calificación". Con un filtro aplicado se indica cuántas se muestran (por ejemplo, "Mostrando 2 de 4 reseñas") y aparece el enlace "Limpiar filtros". La lista se desplaza dentro de su propio recuadro."
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (25/10/2026). En Mis actividades, "agregar 2 filas más" se aclaró con el
+    usuario: 12 actividades por página.
+  - components/BuscadorLupa.tsx (NUEVO): campo de búsqueda con lupa y cruz para limpiar;
+    filtra mientras se escribe. Lo usan Historial y Mis actividades.
+  - lib/busquedaClases.ts (NUEVO): claseCoincide busca por nombre (sin tildes) o por fecha:
+    numérica como prefijo de "d/m/aaaa" o "dd/mm/aaaa" (acepta "-" y "." como separador),
+    abreviada como en la lista y con el mes completo.
+  - lib/opiniones.ts: opinionesVisibles pasa a ser genérica (sirve para las reseñas del
+    detalle y para las del instructor); el detalle del alumno no cambia.
+  - pages/instructor/HistorialClases.tsx: la búsqueda se aplica junto con el filtro de
+    actividad, antes de los conteos; usePaginado con clave [estado, actividad, búsqueda];
+    lista con .ah-scroll (máximo 640 px) que vuelve arriba al cambiar de página.
+  - pages/instructor/ProximasClases.tsx: se pagina por clase y después se agrupa por día la
+    página; .ah-scroll de 680 px.
+  - pages/instructor/MisActividades.tsx: 12 por página; la clave de reinicio es la búsqueda, así
+    eliminar una actividad no manda a la página 1.
+  - pages/instructor/Resenas.tsx: estado + estrellas + orden; "Sin responder" incluye las
+    denunciadas que no tienen respuesta y excluye las ocultas (no se pueden responder). El
+    resumen de arriba (promedio y barras) no cambia con los filtros: sigue contando sólo las
+    reseñas visibles. Lista con .ah-scroll de 760 px.
+  - Mantenimiento: en el equipo, sed -i convertía los finales de línea CRLF en LF; afectó a
+    Login.tsx (ENTRADA 015), HistorialClases.tsx, ProximasClases.tsx y Resenas.tsx y se
+    restauró antes de cerrar.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas. No probado en el navegador: el
+  navegador de la sesión no tenía una cuenta de instructor iniciada y no se usaron
+  credenciales.
+
+HISTORIAS Y CRITERIOS: criterios NUEVOS propuestos (E2I, códigos a confirmar): Historial
+  "paginado de a 10 y con búsqueda por actividad o fecha" (E2I, historial de clases); Próximas
+  clases "paginado de a 10" (E2I-HU07 o la que corresponda); Mis actividades "12 por página y
+  búsqueda"; Reseñas "filtros por estado y calificación y orden" (E2I, reseñas recibidas).
+
+PANTALLAS: Historial, Próximas clases, Mis actividades y Reseñas del instructor (E2I, códigos a
+  confirmar); "Manual de usuario" (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 6. Instructor; 9. Historial y Calificaciones; 15. Ayuda y Soporte al Usuario (manual).
+
+CASOS DE USO: sin cambios (113).
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Nuevas: lib/busquedaClases.test.ts (4), pages/instructor/HistorialClases.test.tsx (5),
+    pages/instructor/ProximasClases.test.tsx (1), pages/instructor/MisActividades.test.tsx (3).
+    pages/instructor/Resenas.test.tsx suma 2 (filtros de estado y calificación; orden).
+  - Frontend completo (npx vitest run --maxWorkers=1, 25/10/2026): "Test Files  43 passed
+    (43)" y "Tests  267 passed (267)". Antes: 252 en 39.
+  - Manual: frontend (npx vitest run src/lib/manual src/pages/public) "Tests  40 passed (40)";
+    backend ManualUsuarioTest (9) y PreguntarAlAsistenteServiceTest (12), sin fallas.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios (una advertencia nueva
+  que apareció en MisActividades.tsx se corrigió). npx tsc -b: sin errores. npm run build:
+  correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios. Para que el asistente use el manual nuevo hay que
+  reiniciar el backend.
+
+DECISIONES:
+  - 10 por página en las listas de clases y 12 en la grilla de actividades (pedido del
+    usuario).
+  - Paginación y scroll juntos: la página acota cuántas filas hay y el scroll evita que la
+    página se haga larga.
+  - En Reseñas, el filtro de estado se sumó al de estrellas y al orden porque es lo que el
+    instructor necesita para trabajar (encontrar lo que falta responder).
+  - Un solo campo de búsqueda en el Historial, para nombre y fecha, en lugar de dos campos.
+
+ERRORES DETECTADOS: ninguno en la aplicación.
+
+CAPTURAS SUGERIDAS: Historial con una búsqueda por fecha; Mis actividades con la búsqueda y la
+  paginación; Reseñas con un filtro aplicado.
+
+PENDIENTE QUE QUEDA: probar las cuatro pantallas en el navegador con una cuenta de instructor
+  aprobada.
+
+================================================================================
+ENTRADA 017
+================================================================================
+FECHA: 25/10/2026
+
+REPOSITORIO: activehub-frontend.
+
+RAMA Y COMMITS: main. Sin commit al momento de escribir esta entrada. Sin Pull Request.
+
+TIPO: corrección de error (interfaz).
+
+TÍTULO: El logo de ActiveHub del panel lateral ya no lleva a la página de inicio pública.
+
+QUÉ CAMBIA PARA EL USUARIO: en el panel lateral del instructor (y del administrador, que usa
+  el mismo componente), tocar el logo "ActiveHub" ya no hace nada. Antes llevaba a la landing
+  pública, que es la página de entrada de la plataforma para quien no inició sesión. El cursor
+  ya no cambia a la mano sobre el logo.
+
+TEXTOS DE INTERFAZ: sin cambios. Manual de usuario: sin cambios (no menciona el logo).
+
+DETALLE TÉCNICO:
+  - Reporte del usuario (25/10/2026), con una captura de "Mi perfil" del instructor.
+  - components/DashSidebar.tsx: el contenedor del logo pierde el onClick que hacía
+    navigate("/") y el cursor:pointer. Lleva data-testid="logo-panel" para la prueba.
+  - No se tocó el logo del área del alumno (AlumnoNav), que lleva a su propio inicio
+    (/alumno), ni el de las pantallas públicas: el reporte fue sobre el panel del instructor.
+
+ESTADO: corregido; PROBADO con prueba automatizada. No probado en el navegador (no había
+  sesión de instructor en el navegador de la sesión).
+
+HISTORIAS Y CRITERIOS: sin cambios.
+
+PANTALLAS: todas las del instructor y del administrador (panel lateral compartido).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 6. Instructor; 2. Gestión de Usuarios, Roles y Permisos (panel del administrador).
+
+CASOS DE USO: sin cambios.
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Nueva: components/DashSidebar.test.tsx (1: tocar el logo no navega y no tiene cursor de
+    enlace).
+  - Frontend completo (npx vitest run --maxWorkers=1, 25/10/2026): "Test Files  44 passed
+    (44)" y "Tests  268 passed (268)". Antes: 267 en 43.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios.
+
+DECISIONES: el logo queda como identidad, sin acción (pedido del usuario: "no debería pasar
+  nada"), en lugar de llevarlo al Panel; el Panel ya está en el menú.
+
+ERRORES DETECTADOS: el logo del panel lateral llevaba a la landing pública. Corregido.
+
+CAPTURAS SUGERIDAS: no hace falta.
+
+PENDIENTE QUE QUEDA: confirmarlo en el navegador con una cuenta de instructor.
+
+================================================================================
+ENTRADA 018
+================================================================================
+FECHA: 26/10/2026
+
+REPOSITORIO: ambos (activehub-frontend y activehub-backend).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: nueva funcionalidad y corrección de errores.
+
+TÍTULO: El instructor administra su documentación; para volver a postularse tiene que subir
+  documentación nueva; el motivo del rechazo es obligatorio.
+
+QUÉ CAMBIA PARA EL USUARIO:
+  - Instructor: la tarjeta "Documentación" muestra lo que cargó y permite verlo, subir más y
+    quitar lo que ya no sirve. Está en "Mis datos" mientras la solicitud no está aprobada y en
+    "Mi perfil" una vez aprobada (para sumar, por ejemplo, un curso nuevo). Antes la
+    documentación sólo se cargaba en el registro y únicamente la veía el administrador.
+  - Instructor rechazado: ve el motivo que escribió el administrador, y "Volver a postularme"
+    se habilita recién cuando sube al menos un documento nuevo. Antes se podía volver a
+    postular sin cambiar nada y el administrador recibía de nuevo lo que había rechazado.
+  - Administrador: el motivo del rechazo es obligatorio; una solicitud rechazada figura
+    "Validación rechazada" (decía "Pago rechazado"); al volver a postularse el instructor, ve
+    el motivo anterior y qué documentos son nuevos y cuáles quitó el instructor. "Rechazar" en
+    Gestión › Instructores ya no rechaza de un clic: abre la solicitud con el campo del motivo.
+
+TEXTOS DE INTERFAZ:
+  Nuevos, tarjeta "Documentación" (instructor):
+    - Título "Documentación". Descripción en "Mis datos" con la solicitud rechazada: "Subí la
+      documentación que te pidieron. Para volver a postularte tiene que haber al menos un
+      documento nuevo."; en revisión: "Es la documentación que revisa el equipo de ActiveHub.
+      Si te falta algo, podés sumarlo."; en "Mi perfil": "Tus certificaciones y la
+      documentación con la que te validaron. Si hacés un curso nuevo, sumalo acá."
+    - Botones "Subir documento" ("Subiendo…"), "Ver" y "Quitar". Pie: "PDF, JPG o PNG, hasta 5
+      MB por archivo.". Fila: "Subido <fecha> · <tamaño>" y la marca "Nuevo".
+    - Confirmación: "¿Quitar "<archivo>" de tu documentación?". Avisos: "Subiste "<archivo>".",
+      "Quitaste "<archivo>".", "Formato no permitido. Subí un PDF, JPG o PNG.", "El archivo
+      supera los 5 MB.", "Todavía no tenés documentación cargada.", "No pudimos cargar tu
+      documentación." con "Reintentar".
+    - "Quitar" deshabilitado con el último documento, con la ayuda "Tenés que tener al menos un
+      documento cargado. Subí el nuevo antes de quitar este."
+  Nuevos o modificados, "Mis datos":
+    - Debajo de los botones, con la solicitud rechazada y sin documento nuevo: "Subí al menos un
+      documento nuevo en "Documentación" para volver a postularte."
+    - Texto de la solicitud rechazada: "No pudimos validar tu perfil de instructor con lo que
+      enviaste. Revisá el motivo, subí la documentación que te piden y volvé a postularte."
+      (decía "…con los datos enviados. Revisá el motivo más abajo, actualizá lo que haga falta y
+      volvé a postularte.").
+    - Motivo por defecto (rechazos viejos sin motivo): "la documentación adjunta no pudo ser
+      validada. Subí documentación nueva y volvé a postularte."
+    - "Mientras tu solicitud no esté aprobada, solo podés ver y editar tus datos y tu
+      documentación." (antes terminaba en "tus datos.").
+  Modificado, "Mi perfil" del instructor: "Tus datos de cuenta, tu foto y tu documentación de
+    instructor." (decía "Tus datos de cuenta y tu foto. La documentación y el estado de tu
+    solicitud están en "Mis datos"", que no era cierto para un instructor aprobado).
+  Mensajes del servidor: "Antes de volver a postularte, subí la documentación nueva que te
+    pidieron en el motivo del rechazo."; "Tenés que tener al menos un documento cargado. Subí el
+    nuevo antes de quitar este."; "Podés tener hasta 10 documentos cargados. Quitá alguno que ya
+    no sirva para subir otro."; "Escribí el motivo del rechazo: es lo que va a leer el
+    instructor para corregir su solicitud.". Notificación al rechazar: "Tu perfil de instructor
+    fue rechazado. Motivo: <motivo> Subí la documentación que falta desde "Mis datos" y volvé a
+    postularte.".
+  Nuevos o modificados, administrador ("Validar instructor"):
+    - Campo "Motivo del rechazo *" con el ejemplo "Qué le falta o qué tiene que corregir. Es lo
+      que va a leer el instructor." (era "Motivo del rechazo (opcional)").
+    - "Revisá los datos y la documentación. Si aprobás, el instructor podrá publicar
+      actividades. Si rechazás, tenés que escribir el motivo: es lo que va a leer el instructor
+      para corregir su solicitud." (terminaba en "podés indicar el motivo.").
+    - "Se volvió a postular. Motivo del rechazo anterior: <motivo>".
+    - Marcas de documento: "Nuevo desde el rechazo" y "Quitado por el instructor".
+    - Estado: "Validación rechazada" (en Gestión › Instructores y en Validar instructor).
+  Auditoría (columna "Detalle"): "<actor> quitó un documento de su documentación de
+    instructor.".
+  Manual de usuario (las dos copias, idénticas):
+    - 3.1, viñeta "Rechazada" reemplazada por: "se muestra el motivo informado por el
+      administrador. Para volver a postularse hay que subir al menos un documento nuevo en
+      "Documentación": recién entonces se habilita el botón "Volver a postularme", que reabre la
+      solicitud y la devuelve al estado "En revisión". Mientras no haya documentación nueva, la
+      pantalla lo indica: "Subí al menos un documento nuevo en "Documentación" para volver a
+      postularte."".
+    - 3.1, párrafo nuevo sobre la tarjeta "Documentación" (qué muestra, subir hasta 10 de
+      hasta 5 MB, quitar sin quedarse sin ninguno, marca "Nuevo", dónde está según el estado y
+      que el administrador conserva lo quitado).
+    - 4.2, paso 3 ampliado (motivo anterior y las dos marcas) y párrafo nuevo: "El botón
+      "Rechazar" del listado de "Instructores" abre la solicitud con el campo "Motivo del
+      rechazo" ya visible, para decidir con la documentación a la vista. Una solicitud
+      rechazada figura con el estado "Validación rechazada"."
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (26/10/2026), después de un análisis sin implementación que confirmó
+    los cuatro puntos: el instructor no podía ver ni administrar su documentación; volver a
+    postularse no pedía nada nuevo; el motivo del admin era opcional; y el admin leía "Pago
+    rechazado". Se le avisó antes de tocar el backend y aprobó ("hagámoslo"). De las dos
+    variantes propuestas se implementó la que él planteó: documentación nueva obligatoria.
+  - Backend:
+    - V35__documentacion_instructor_reabrir.sql: perfil_instructor.rechazado_at (TIMESTAMPTZ),
+      completada con updated_at en los perfiles ya rechazados; documento_instructor.estado (que
+      existía desde V1 sin uso) pasa a distinguir vigente ("PENDIENTE") de "RETIRADO".
+      Idempotente.
+    - Casos de uso NUEVOS (113 -> 116): listarmisdocumentos (GET /api/instructor/documentos),
+      descargarmidocumento (GET /api/instructor/documentos/{id}/archivo) y retirarmidocumento
+      (DELETE /api/instructor/documentos/{id}). Sin permiso, como subirdocumento: son "Mis
+      datos" (RN-16) y resuelven el perfil de quien llama. Retirar no borra (estado RETIRADO, el
+      archivo queda) y no deja quitar el último documento vigente.
+    - rechazarinstructor: motivo obligatorio (@NotBlank, máximo 1000, @SinHtml) y guarda
+      rechazado_at. El Controller no tenía @Valid y no corría ninguna validación del request
+      (tampoco @SinHtml): se agregó.
+    - reabrirsolicitudinstructor: exige al menos un documento vigente posterior a
+      rechazado_at; conserva el motivo y la fecha del rechazo (antes borraba el motivo).
+    - subirdocumento: tope de 10 documentos vigentes.
+    - listardocumentosinstructor (admin): devuelve también los retirados, con nuevo y retirado.
+    - AuditAccion.DOCUMENTO_INSTRUCTOR_RETIRADO (nueva) y su descripción.
+  - Frontend:
+    - components/DocumentacionCard.tsx (NUEVO), en "Mis datos" (Solicitud.tsx) y en "Mi perfil"
+      (Perfil.tsx) del instructor. "Volver a postularme" se habilita con un documento "nuevo".
+    - admin/ValidarInstructor.tsx: motivo obligatorio, marcas de documentos, motivo anterior,
+      "?accion=rechazar" abre el formulario. Corrección: en una solicitud ya aprobada, "Rechazar
+      solicitud" abría un formulario que sólo existía en la rama de las pendientes, así que no
+      hacía nada.
+    - admin/Gestion.tsx: "Rechazar" lleva a la validación; badge "Validación rechazada".
+    - components/StatusBadge.tsx: tipo nuevo validacionRechazada.
+    - context/DataContext.tsx: listarMisDocumentos, verMiDocumento, retirarMiDocumento;
+      rechazarInstructor con motivo obligatorio.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas en los dos repositorios. No probado en
+  el navegador (no hay sesión de instructor ni de administrador en el navegador de la sesión).
+  La migración V35 quedó aplicada en la base compartida al correr la suite del backend.
+
+HISTORIAS Y CRITERIOS: E2I-HU12 (solicitud del instructor), criterio 6 (volver a postularse)
+  MODIFICADO: exige documentación nueva. Criterios NUEVOS propuestos: "el instructor puede ver,
+  subir y quitar su documentación" y "el motivo del rechazo es obligatorio y es lo que ve el
+  instructor". E4Ad (validar instructores): el admin ve la documentación nueva y la quitada.
+
+PANTALLAS: "Mis datos" y "Mi perfil" del instructor; "Validar instructor" y Gestión ›
+  Instructores del administrador; "Manual de usuario" (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: RN-12 (documentación obligatoria) se extiende: no se puede quedar sin ningún
+  documento vigente. Regla NUEVA propuesta (RN-21): para volver a postularse después de un
+  rechazo hace falta documentación posterior al rechazo.
+
+MÓDULOS: 6. Instructor; 2. Gestión de Usuarios, Roles y Permisos (validación); 4. Auditoría y
+  Trazabilidad; 15. Ayuda y Soporte al Usuario (manual).
+
+CASOS DE USO: de 113 a 116. NUEVOS: listarmisdocumentos, descargarmidocumento,
+  retirarmidocumento. Modificados: rechazarinstructor, reabrirsolicitudinstructor,
+  subirdocumento, listardocumentosinstructor y listarauditoria (descripción nueva).
+
+ENTIDADES Y MIGRACIONES: V35 (perfil_instructor.rechazado_at; uso de documento_instructor.estado).
+  Migraciones: de 34 a 35.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: R05 (documentación vs. sistema): el manual ya decía que el motivo era obligatorio y no
+  lo era; ahora coincide.
+
+SEGURIDAD: los tres endpoints nuevos sólo alcanzan los documentos del instructor que llama (el
+  documento se busca junto con su perfil: uno ajeno da 404). Se activó la validación del
+  request de rechazo, que no corría (incluido @SinHtml).
+
+PRUEBAS:
+  - Backend, nuevas: ListarMisDocumentosServiceTest (3) y ControllerTest (1),
+    DescargarMiDocumentoServiceTest (2) y ControllerTest (1), RetirarMiDocumentoServiceTest (3)
+    y ControllerTest (2), RechazarInstructorControllerTest (3). Modificadas:
+    RechazarInstructorServiceTest (motivo obligatorio y fecha del rechazo),
+    ReabrirSolicitudInstructorServiceTest (+1: sin documentación nueva no reabre; conserva el
+    motivo), ListarDocumentosInstructorServiceTest (+1: nuevo y retirado), SubirDocumentoServiceTest
+    (+1: tope de 10).
+  - Backend completo (JAVA_HOME=$HOME/.jdks/jdk-21.0.12+8 ./mvnw -B test, 26/10/2026): "Tests
+    run: 1039, Failures: 0, Errors: 0, Skipped: 2", "BUILD SUCCESS". Antes: 1020.
+  - Frontend, nuevas: components/DocumentacionCard.test.tsx (5), pages/instructor/
+    Solicitud.test.tsx (3), pages/admin/ValidarInstructor.test.tsx (4).
+  - Frontend completo (npx vitest run --maxWorkers=1, 26/10/2026): "Test Files  47 passed
+    (47)" y "Tests  280 passed (280)". Antes: 268 en 44.
+  - Manual: frontend "Tests  40 passed (40)"; backend ManualUsuarioTest (9) y
+    PreguntarAlAsistenteServiceTest (12), sin fallas.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin variables nuevas. Reiniciar el backend para los endpoints
+  nuevos y el manual del asistente.
+
+DECISIONES:
+  - Documentación nueva obligatoria para volver a postularse (lo que planteó el usuario), y no
+    "documentación o datos editados".
+  - Quitar un documento no lo borra: queda RETIRADO para el historial del administrador (es la
+    documentación con la que se evaluó al instructor).
+  - Se reusó la columna documento_instructor.estado en lugar de agregar otra.
+  - El motivo y la fecha del rechazo se conservan al volver a postularse, para comparar.
+  - Un instructor ya aprobado también administra su documentación (desde "Mi perfil"); subir
+    algo nuevo no lo vuelve a poner en revisión.
+  - "Rechazar" del listado lleva a la validación en lugar de abrir otro formulario de motivo.
+
+ERRORES DETECTADOS: el request de rechazo no se validaba (faltaba @Valid); "Rechazar solicitud"
+  en una solicitud aprobada no hacía nada; la solicitud rechazada se mostraba "Pago rechazado";
+  "Mi perfil" del instructor mandaba a "Mis datos", que un instructor aprobado no puede abrir.
+  Corregidos.
+
+CAPTURAS SUGERIDAS: "Mis datos" rechazado con la tarjeta de documentación y el botón
+  deshabilitado; "Validar instructor" con las marcas de documentos y el motivo anterior.
+
+PENDIENTE QUE QUEDA: probar en el navegador con una cuenta de instructor y una de
+  administrador (reiniciar el backend). Opcional: avisar al administrador cuando un instructor
+  ya aprobado sube documentación nueva (hoy sólo la ve al entrar a su solicitud).
+
+================================================================================
+ENTRADA 019
+================================================================================
+FECHA: 26/10/2026
+
+REPOSITORIO: activehub-frontend (código) y activehub-backend (copia del manual del asistente).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: interfaz (cambio funcional menor).
+
+TÍTULO: Gestión del administrador: se retira "Editar" de Actividades y las seis pestañas
+  ganan paginación, scroll y filtros.
+
+QUÉ CAMBIA PARA EL USUARIO:
+  - Gestión › Actividades: ya no aparece el botón "Editar", que estaba deshabilitado
+    ("Próximamente") y no correspondía: la actividad la edita su instructor; el administrador
+    sólo la modera ("Quitar").
+  - Las seis pestañas (Usuarios, Instructores, Actividades, Reclamos, Reseñas y Soporte)
+    muestran 10 filas por página dentro de un recuadro con scroll propio (el encabezado de la
+    tabla queda fijo arriba), con buscador sin tildes, filtros propios de cada lista, el
+    contador "N de M" o "M en total" y "Limpiar filtros". Antes sólo Reclamos y Reseñas
+    paginaban, y sólo Usuarios y Actividades tenían buscador.
+  - Filtros por pestaña: Usuarios (nombre o correo, rol, estado); Instructores (nombre, correo o
+    especialidad, validación); Actividades (actividad o instructor, categoría, nivel); Reclamos
+    (persona, actividad o motivo, tipo, estado); Reseñas (alumno, actividad o comentario,
+    visibilidad, puntaje); Soporte (persona, correo, asunto o detalle, estado).
+  - El selector de rol de Usuarios ofrece los roles que existen en las cuentas (antes eran los
+    tres del sistema escritos a mano, sin los roles creados por el administrador).
+  - Consulta del usuario, sin cambios de código: al abrir un documento del instructor, la
+    pestaña nueva muestra una dirección "blob:http://localhost:5173/…". Es normal: el archivo
+    se descarga con la sesión del administrador y el navegador lo muestra desde una dirección
+    temporal propia de la página que lo pidió; por eso dice localhost en desarrollo y dirá el
+    dominio real una vez desplegado. No queda publicado en ningún lado ni sirve fuera de esa
+    pestaña.
+
+TEXTOS DE INTERFAZ:
+  Retirado: el botón "Editar" (con la ayuda "Próximamente") de Gestión › Actividades.
+  Nuevos, buscadores (con su nombre accesible entre paréntesis): "Buscar por nombre o correo"
+    ("Buscar usuarios"), "Buscar por nombre, correo o especialidad" ("Buscar instructores"),
+    "Buscar por actividad o instructor" ("Buscar actividades"), "Buscar por persona, actividad
+    o motivo" ("Buscar reclamos"), "Buscar por alumno, actividad o comentario" ("Buscar
+    reseñas"), "Buscar por persona, correo, asunto o detalle" ("Buscar reportes"). Antes:
+    "Buscar…" y "Buscar actividad…".
+  Nuevos, selectores: "Todos los roles" (y los roles en uso); "Todos los estados", "Activos",
+    "Suspendidos"; "Todas las validaciones", "En revisión", "Validados", "Validación
+    rechazada"; "Todas las categorías"; "Todos los niveles"; "Todos los tipos", "Clase",
+    "Reseña"; "Todos los estados", "Pendiente", "En Auditoría", "Resuelta"; "Visibles y
+    ocultas", "Visibles", "Ocultas"; "Todos los puntajes", "5 estrellas" a "1 estrella";
+    "Todos los estados", "Abiertos", "Cerrados".
+  Nuevos, contador: "<n> en total" o, con filtros, "<n> de <total>", y "Limpiar filtros".
+  Nuevo, sin coincidencias: "Sin resultados." en las pestañas que no lo tenían (se mantienen
+    los mensajes de lista vacía: "No hay instructores registrados.", "No hay reclamos
+    registrados.", "Todavía no hay reseñas publicadas.", "No hay reportes de soporte.").
+  Manual de usuario (las dos copias, idénticas):
+    - 4.1, párrafo nuevo: "En "Gestión", las seis pestañas ("Usuarios", "Instructores", "Actividades", "Reclamos", "Reseñas" y "Soporte") muestran 10 filas por página, con los controles de paginación al pie, dentro de un recuadro con scroll propio. Cada una tiene un buscador que ignora las tildes y los filtros que corresponden a su contenido: rol y estado en "Usuarios"; estado de validación en "Instructores"; categoría y nivel en "Actividades"; tipo (clase o reseña) y estado en "Reclamos"; visibilidad (visibles u ocultas) y puntaje en "Reseñas"; y estado (abiertos o cerrados) en "Soporte". Junto a los filtros se indica cuántas filas coinciden (por ejemplo, "3 de 25") y el enlace "Limpiar filtros" los restablece. En "Actividades" la única acción es "Quitar": el contenido de una actividad lo edita su instructor."
+    - 4.3: "buscar y filtrar cuentas por nombre, correo o rol," pasa a "buscar cuentas por
+      nombre o correo y filtrarlas por rol y por estado (activos o suspendidos),".
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (26/10/2026). Solo frontend; todo se filtra y pagina en el cliente.
+  - lib/filtrosGestion.ts (NUEVO): una función pura por pestaña (filtrarUsuarios,
+    filtrarInstructores, filtrarActividades, filtrarReclamos, filtrarResenas, filtrarReportes),
+    para probarlas sin montar la pantalla.
+  - pages/admin/Gestion.tsx: un objeto de filtro por pestaña; usePaginado en las seis con el
+    filtro como clave de reinicio (resolver un caso o quitar algo no vuelve a la página 1);
+    filas en un .ah-scroll de 620 px que vuelve arriba al cambiar de página; barra de filtros
+    común (BarraFiltros, en el mismo archivo) con BuscadorLupa; las opciones de rol, categoría y
+    nivel salen de los datos cargados.
+  - lib/busquedaClases.ts (Historial del instructor): el formateador de la fecha larga se crea
+    una sola vez. toLocaleDateString armaba uno por llamada (medido: 117 ms contra 2 ms cada
+    1000 llamadas) y la lupa lo pide por cada clase en cada tecla.
+  - pages/instructor/HistorialClases.test.tsx: tres pruebas cortaban por tiempo (5 s). La causa
+    eran las consultas getByRole, que en jsdom recorren todo el árbol de accesibilidad; se
+    cambiaron por consultas por texto y por etiqueta (prueban lo mismo) y pasaron de unos 5 s a
+    unos 100 ms.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas. No probado en el navegador (sin sesión
+  de administrador en el navegador de la sesión).
+
+HISTORIAS Y CRITERIOS: E4Ad (Gestión): criterios NUEVOS propuestos de paginación de 10 y filtros
+  por pestaña; E4Ad-HU02 (gestión de usuarios) gana el filtro por estado.
+
+PANTALLAS: Gestión del administrador (E4Ad, seis pestañas); "Manual de usuario" (SYS-PAN-MAN).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 2. Gestión de Usuarios, Roles y Permisos; 11. Administración y Soporte; 15. Ayuda y
+  Soporte al Usuario (manual).
+
+CASOS DE USO: sin cambios (116).
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: R05: el manual (4.2) ya decía que el listado de instructores se podía filtrar por
+  estado de validación y no se podía; ahora coincide.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Nuevas: lib/filtrosGestion.test.ts (6: un caso por pestaña) y pages/admin/Gestion.test.tsx
+    (3: sin "Editar"; 10 por página con scroll propio; filtro por categoría y texto con el
+    contador y "Limpiar filtros").
+  - HistorialClases.test.tsx: mismas 5 pruebas con consultas más rápidas.
+  - Frontend completo (npx vitest run --maxWorkers=1, 26/10/2026): "Test Files  49 passed
+    (49)" y "Tests  289 passed (289)". Antes: 280 en 47.
+  - Manual: frontend "Tests  40 passed (40)"; backend ManualUsuarioTest (9) y
+    PreguntarAlAsistenteServiceTest (12), sin fallas.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios. Reiniciar el backend para el manual del asistente.
+
+DECISIONES:
+  - Retirar "Editar" en lugar de implementarlo: la actividad es del instructor; el admin ya
+    tiene "Quitar" para moderar.
+  - 10 por página en todas, igual que Reclamos y Reseñas.
+  - Los filtros se aplican en el cliente, como el resto del proyecto (el backend devuelve todo
+    sin paginar).
+  - El documento del instructor sigue abriéndose como dirección temporal del navegador: es lo
+    que permite mandarlo con la sesión sin dejarlo publicado.
+
+ERRORES DETECTADOS: un botón deshabilitado sin función ("Editar"); el filtro de rol no ofrecía
+  los roles creados por el administrador; lentitud de la lupa del Historial del instructor.
+  Corregidos.
+
+CAPTURAS SUGERIDAS: una pestaña de Gestión con filtros aplicados y la paginación.
+
+PENDIENTE QUE QUEDA: probar en el navegador con una cuenta de administrador.
+
+================================================================================
+ENTRADA 020
+================================================================================
+FECHA: 26/10/2026
+
+REPOSITORIO: activehub-frontend (código) y activehub-backend (copia del manual del asistente).
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: interfaz (cambio funcional menor).
+
+TÍTULO: Gestión del administrador: selector "Ordenar por" en las seis pestañas.
+
+QUÉ CAMBIA PARA EL USUARIO: cada pestaña de Gestión tiene un selector "Ordenar por" con las
+  opciones que tienen sentido para su lista. Antes cada una venía en un orden fijo que el
+  backend elegía y el administrador no podía cambiar. El orden inicial es el de antes, salvo
+  Actividades, que venía en el orden del catálogo y pasa a nombre. Cambiar el orden vuelve a la
+  página 1; "Limpiar filtros" no lo cambia. Las opciones más útiles para trabajar: instructores
+  con la solicitud más antigua primero (el que más espera), reclamos más antiguos primero (lo
+  más urgente sin resolver), reseñas con peor puntaje y actividades peor calificadas.
+
+TEXTOS DE INTERFAZ:
+  Nuevo en las seis pestañas: selector "Ordenar por" (nombre accesible "Ordenar por").
+  Opciones (la primera es la inicial):
+    - Usuarios: "Más nuevos primero", "Más antiguos primero", "Nombre (A-Z)".
+    - Instructores: "Nombre (A-Z)", "Solicitud más antigua primero", "Solicitud más reciente
+      primero".
+    - Actividades: "Nombre (A-Z)", "Precio: menor", "Precio: mayor", "Mejor calificadas", "Peor
+      calificadas".
+    - Reclamos: "Más recientes primero", "Más antiguos primero".
+    - Reseñas: "Más recientes primero", "Más antiguas primero", "Peor puntaje", "Mejor
+      puntaje".
+    - Soporte: "Abiertos primero", "Más recientes primero", "Más antiguos primero".
+  Manual de usuario (las dos copias, idénticas), 4.1: al párrafo de Gestión se le suma, después
+    de "…y el enlace "Limpiar filtros" los restablece.": "Cada pestaña tiene además el selector "Ordenar por": "Usuarios" ordena por "Más nuevos primero" (la opción inicial), "Más antiguos primero" o "Nombre (A-Z)"; "Instructores", por "Nombre (A-Z)" (la inicial), "Solicitud más antigua primero" o "Solicitud más reciente primero"; "Actividades", por "Nombre (A-Z)" (la inicial), "Precio: menor", "Precio: mayor", "Mejor calificadas" o "Peor calificadas" (las actividades sin reseñas quedan al final); "Reclamos", por "Más recientes primero" (la inicial) o "Más antiguos primero"; "Reseñas", por "Más recientes primero" (la inicial), "Más antiguas primero", "Peor puntaje" o "Mejor puntaje"; y "Soporte", por "Abiertos primero" (la inicial), "Más recientes primero" o "Más antiguos primero". Cambiar el orden vuelve a la primera página; "Limpiar filtros" no lo modifica."
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (26/10/2026), después de proponerle qué órdenes tenían sentido en cada
+    pestaña. Solo frontend.
+  - lib/filtrosGestion.ts: ORDENES_* (opciones por pestaña, la primera es la inicial) y una
+    función de orden pura por pestaña (devuelve una copia). Los nombres se comparan con
+    Intl.Collator("es-AR") sin distinguir tildes. En las actividades, rating 0 = sin reseñas: va
+    al final en los dos órdenes por calificación (no es "la peor"). En reseñas, a igual puntaje,
+    la más reciente primero.
+  - admin/Gestion.tsx: un orden por pestaña (aparte de los filtros); se filtra, después se
+    ordena y recién entonces se pagina; la clave de reinicio de la paginación incluye el orden.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas. No probado en el navegador.
+
+HISTORIAS Y CRITERIOS: E4Ad (Gestión): criterio NUEVO propuesto "cada listado se puede ordenar".
+
+PANTALLAS: Gestión del administrador; "Manual de usuario" (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: sin cambios.
+
+MÓDULOS: 2. Gestión de Usuarios, Roles y Permisos; 11. Administración y Soporte; 15. Ayuda y
+  Soporte al Usuario (manual).
+
+CASOS DE USO: sin cambios (116).
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: sin cambios.
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - lib/filtrosGestion.test.ts suma 5 (orden de cada pestaña, que no modifica la lista
+    original y las actividades sin calificar al final). admin/Gestion.test.tsx suma 1 (orden por
+    nombre por defecto, por precio, y "Limpiar filtros" no lo cambia).
+  - Frontend completo (npx vitest run --maxWorkers=1, 26/10/2026): "Test Files  49 passed
+    (49)" y "Tests  295 passed (295)". Antes: 289.
+  - Manual: frontend y backend sin fallas (ver ESTADO GENERAL).
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios. Reiniciar el backend para el manual del asistente.
+
+DECISIONES: opciones distintas por pestaña (las que sirven para trabajar cada lista) en lugar
+  de las mismas en todas; el orden va aparte de los filtros, para que limpiarlos no lo pierda.
+
+ERRORES DETECTADOS: ninguno.
+
+CAPTURAS SUGERIDAS: una pestaña de Gestión con "Ordenar por" desplegado.
+
+PENDIENTE QUE QUEDA: probar en el navegador con una cuenta de administrador.
+
+================================================================================
+ENTRADA 021
+================================================================================
+FECHA: 28/10/2026
+
+REPOSITORIO: activehub-backend (scripts SQL nuevos en scripts/datos-demo). El frontend no
+  cambia.
+
+RAMA Y COMMITS: main. Sin commit al momento de escribir esta entrada. Sin Pull Request.
+
+TIPO: datos.
+
+TÍTULO: Limpieza de la base y carga de datos de demostración coherentes.
+
+QUÉ CAMBIA PARA EL USUARIO: todavía nada: los scripts están escritos y probados en una base
+  local, pero no se ejecutaron en la base compartida de Supabase. Cuando se ejecuten, la
+  aplicación queda con 6 categorías y 18 tipos de actividad (los de la tabla del usuario), 5
+  instructores aprobados, 12 alumnos, 18 actividades (una por tipo, ninguna competitiva), 108
+  clases (3 dictadas y 3 por venir por actividad), 371 inscripciones, 342 pagos en efectivo,
+  144 reseñas (53 con respuesta del instructor) y 24 favoritos. Se pierden todos los alumnos e
+  instructores que había y lo que colgaba de ellos. Las cuentas de administrador no se tocan.
+
+TEXTOS DE INTERFAZ: sin cambios. Categorías y tipos que se cargan (texto de datos, no de
+  interfaz):
+    - "Entrenamiento de Fuerza y Resistencia": "Trabajo con pesas", "Trabajo con cargas
+      livianas", "Ejercicios de resistencia corporal", "Funcional".
+    - "Actividad Aeróbica": "Running", "Nadar", "Andar en bicicleta", "Bailar".
+    - "Actividades de Flexibilidad": "Estiramientos", "Yoga", "Pilates".
+    - "Artes Marciales": "Tai Chi", "Defensa Personal".
+    - "Aventura": "Senderismo", "Trekking", "Mountain Bike", "Escalada".
+    - "Bienestar": "Relajación".
+
+DETALLE TÉCNICO:
+  - Pedido del usuario (28/10/2026). Respuestas a las preguntas previas: avisa él al equipo;
+    5 instructores, unas 15 actividades y 12 alumnos (quedaron 18 actividades, una por tipo,
+    para que ningún tipo quede vacío en los filtros); copia de seguridad antes; los tres
+    niveles de intensidad quedan como están; ninguna actividad competitiva.
+  - Archivos nuevos en activehub-backend/scripts/datos-demo: LEEME.txt (orden de ejecución),
+    01-copia-de-seguridad.sql (copia todas las tablas de public al esquema
+    respaldo_pre_demo; se niega a pisar una copia anterior), 02-restaurar-copia.sql (vacía y
+    vuelve a llenar public desde la copia en una transacción, padres antes que hijos, por
+    nombre de columna; no toca flyway_schema_history), 03-limpieza-y-carga-demo.sql (una sola
+    transacción) y generar-carga-demo.py (el programa que genera el 03; datos fijos).
+  - Los scripts no son migraciones de Flyway: se ejecutan a mano en el SQL Editor de Supabase.
+  - El borrado es físico (DELETE), no baja lógica: el pedido es que los datos viejos no
+    estén. audit_log se conserva salvo las filas cuyo autor es un alumno o instructor borrado
+    (la clave foránea a usuario no deja otra opción). Los archivos subidos quedan huérfanos en
+    el almacenamiento.
+  - Las fechas se calculan desde el día de ejecución, en hora de Argentina (función temporal
+    pg_temp.dia): las clases dictadas quedan entre 4 y 27 días atrás y las futuras entre 1 y
+    15 días adelante, con estado Habilitada si faltan 4 días o menos y Programada si faltan
+    más. Las inscripciones a clases a más de 4 días son en parte PreInscripción (sin pago ni
+    cupo); las demás son Inscripto o PagoPendiente con pago Efectivo, para que el instructor
+    pueda mostrar "Confirmar cobro". cupos_ocupados cuenta Inscripto y PagoPendiente, como
+    inscribirse. El rating se calcula con la misma consulta que recalcularRating.
+  - No se usa Mercado Pago: un pago Retenido haría que los procesos automáticos intenten
+    capturarlo.
+
+ESTADO: IMPLEMENTADO y PROBADO en un PostgreSQL 16 local (contenedor descartable con las 35
+  migraciones). NO ejecutado en la base compartida.
+
+HISTORIAS Y CRITERIOS: sin cambios.
+
+PANTALLAS: sin cambios.
+
+REGLAS DE NEGOCIO: sin cambios. Los datos las respetan (ver PRUEBAS).
+
+MÓDULOS: 7. Actividades (taxonomía y oferta); datos de todos los demás.
+
+CASOS DE USO: sin cambios (116).
+
+ENTIDADES Y MIGRACIONES: sin cambios en el modelo ni migraciones nuevas. Cambian los datos.
+
+TECNOLOGÍAS: sin cambios (Python con el paquete bcrypt, solo para generar el script).
+
+COSTOS: sin cambios.
+
+RIESGOS: R05 (inconsistencias documentación-sistema): la base compartida pierde los datos que
+  el equipo usaba para probar. Mitigación: copia de seguridad y script de restauración
+  probados.
+
+SEGURIDAD: las 17 cuentas comparten la contraseña acordada para la demostración; no está
+  escrita en ningún archivo ni en esta bitácora: los scripts solo tienen su hash BCrypt
+  (verificado buscando el texto en los archivos nuevos). Correos en @activehub.test, un dominio
+  reservado que no recibe correo. La copia de seguridad guarda los hashes de las cuentas
+  viejas: borrarla cuando ya no haga falta (DROP SCHEMA respaldo_pre_demo CASCADE).
+
+PRUEBAS (todas en el contenedor local, 28/10/2026):
+  - Copia de un estado viejo armado a mano (admin, alumno e instructor con actividad, clase,
+    inscripción, pago, reseña, denuncia, penalización, favorito, notificaciones, auditoría y
+    soporte); carga dos veces seguidas; resumen: 6 categorías, 18 tipos, 5 instructores, 12
+    alumnos, 18 actividades, 108 clases, 371 inscripciones, 342 pagos, 144 reseñas, 24
+    favoritos.
+  - Consultas de control con resultado 0: cupos que no cuadran, clases pasadas sin
+    Finalizada, Habilitada a más de 4 días, reseñas en clases no finalizadas o sin inscripción
+    Inscripto, fechas de alta en el futuro, preinscripciones con pago. Rating entre 3,83 y 4,83;
+    ningún tipo sin actividad.
+  - Volver a ejecutar la copia: se detiene con "Ya existe el esquema respaldo_pre_demo."
+  - Restauración: las 27 tablas quedaron iguales a la copia, fila por fila (EXCEPT ALL en los
+    dos sentidos).
+  - Backend levantado en el puerto 8091 contra el contenedor (Flyway con línea de base 35;
+    la validación de esquema de Hibernate pasó): login con la contraseña de demostración como
+    instructor y como alumno (200) y con una incorrecta (401); catálogo con 6 categorías, 18
+    tipos y 18 actividades; las listas del instructor y del alumno responden con datos. Se
+    cerró al terminar.
+  - Sin cambios de código: no se corrieron las suites del frontend ni del backend.
+
+ANÁLISIS ESTÁTICO: sin cambios.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin variables nuevas. Para aplicarlo: avisar al equipo, ejecutar
+  01 y después 03 en el SQL Editor de Supabase (ver LEEME.txt).
+
+DECISIONES: una actividad por tipo (18 y no 15); pagos solo en efectivo; sin documentos ni
+  fotos (un registro que apunta a un archivo inexistente da error al abrirlo); borrado físico;
+  copia dentro de la misma base en lugar de un volcado externo, para poder restaurar desde el
+  mismo editor.
+
+ERRORES DETECTADOS: en una base vacía la migración V18 falla: V1 crea permiso (con la
+  columna codigo) y configuracion_rol con otras columnas, y el CREATE TABLE IF NOT EXISTS de
+  V18 las saltea. En la prueba local se borraron esas dos tablas vacías antes de aplicar V18.
+  La base compartida no está afectada (ya tiene V18 aplicada); afecta a quien cree una base
+  nueva desde cero. No se corrigió: tocar una migración ya aplicada cambia su checksum y
+  rompe Flyway en las bases existentes. Durante la prueba, 110 inscripciones a clases futuras
+  quedaban con fecha de alta en el futuro: corregido en el generador.
+
+CAPTURAS SUGERIDAS: el catálogo de Explorar con las 18 actividades; el detalle de una
+  actividad con sus opiniones; el roster de una clase futura con un cobro pendiente.
+
+PENDIENTE QUE QUEDA: ejecutarlo en Supabase (lo hace el usuario después de avisar al equipo)
+  y recorrer la aplicación en el navegador.
+
+================================================================================
+ENTRADA 022
+================================================================================
+FECHA: 31/10/2026
+
+REPOSITORIO: activehub-backend y activehub-frontend.
+
+RAMA Y COMMITS: main en los dos. Sin commit al momento de escribir esta entrada. Sin Pull
+  Request.
+
+TIPO: cambio funcional menor (textos y regla de aviso).
+
+TÍTULO: Al cancelarse una clase o inscripción, el pago en efectivo ya no habla de devoluciones.
+
+QUÉ CAMBIA PARA EL USUARIO: un alumno con pago en efectivo recibe sólo el aviso de la
+  cancelación. Con Mercado Pago el aviso sigue informando qué pasó con el dinero, y una
+  preinscripción, que no tiene pago, recibe sólo la cancelación, como ya ocurría. En "Mis
+  pagos" y en el detalle de la clase del instructor, el pago en efectivo cancelado ya no habla
+  de devolución ni afirma que no se cobró.
+
+TEXTOS DE INTERFAZ:
+  Se quitan de los avisos: " Coordiná con el instructor la devolución de lo que pagaste en
+    efectivo." (cancelar clase) y " Coordiná con la plataforma la devolución de lo que pagaste
+    en efectivo." (suspensión por penalización, suspensión por denuncia y reintegro por
+    denuncia).
+  Mis pagos, efectivo cancelado: etiqueta "Pago cancelado" (sin cambios); detalle "La
+    inscripción se canceló." (antes "Coordiná con el instructor la devolución de lo que
+    pagaste.").
+  Detalle de la clase del instructor, efectivo cancelado: etiqueta "Cancelado" y detalle "La
+    inscripción se canceló." (antes "Reintegrado" y "No se cobró."). Con Mercado Pago sigue
+    "Reintegrado" y "No se cobró.".
+  Manual de usuario (las dos copias), cuatro frases:
+    - "Si el pago era en efectivo, el aviso informa sólo la cancelación."
+    - ""Pago cancelado" (pago en efectivo de una inscripción cancelada): "La inscripción se
+      canceló.""
+    - "En el caso de los pagos en efectivo, la notificación informa sólo la cancelación: el
+      efectivo se arregla por fuera de la plataforma."
+    - "También se usa para un pago en efectivo de una inscripción cancelada, que se arregla
+      por fuera de la plataforma."
+
+DETALLE TÉCNICO:
+  - Decisión del usuario (31/10/2026): en efectivo el alumno no llega a pagar por la
+    plataforma, así que no hay un pago que devolver; lo que haya pasado en mano se arregla por
+    fuera. Se descartaron dos propuestas previas: distinguir el cobro confirmado del no
+    confirmado (guardando el dato en pago.status_detail) y un texto "Si pagaste en efectivo,
+    coordiná la devolución".
+  - Backend: se quitó el texto en CancelarClaseService, CrearPenalizacionService y
+    ResolverDenunciaService (dos lugares). El pago sigue pasando a Cancelado, para que no quede
+    como válido.
+  - Frontend: lib/status.ts (explicarPagoAlumno y explicarPagoInstructor). La frase dice
+    "inscripción" y no "clase" porque el reintegro por denuncia cancela la inscripción de una
+    clase que sí se dictó.
+  - Cuando cancela el propio alumno no cambia nada.
+
+ESTADO: IMPLEMENTADO y PROBADO con pruebas automatizadas, salvo las tres clases de prueba que
+  necesitan base (ver PRUEBAS). No probado en el navegador.
+
+HISTORIAS Y CRITERIOS: E2I-HU08 criterio 5: cambia la decisión 6 del proyecto (el aviso le
+  indicaba al alumno coordinar la devolución). El pago en efectivo sigue quedando Cancelado.
+
+PANTALLAS: "Mis pagos" del alumno; detalle de la clase del instructor; "Manual de usuario"
+  (SYS-PAN-MAN, texto).
+
+REGLAS DE NEGOCIO: cambia la regla de aviso de la decisión 6, ver HISTORIAS Y CRITERIOS.
+
+MÓDULOS: 5. Alumno; 6. Instructor; 8. Reservas y Pagos; 15. Ayuda y Soporte al Usuario
+  (manual).
+
+CASOS DE USO: sin cambios (116).
+
+ENTIDADES Y MIGRACIONES: sin cambios.
+
+TECNOLOGÍAS: sin cambios.
+
+COSTOS: sin cambios.
+
+RIESGOS: un instructor puede haber confirmado un cobro antes de cancelar: la plataforma no le
+  indica nada al alumno y eso se arregla por fuera (decisión del usuario).
+
+SEGURIDAD: sin cambios.
+
+PRUEBAS:
+  - Backend: 4 nuevas (CancelarClaseServiceTest: efectivo y preinscripción;
+    CrearPenalizacionServiceTest y ResolverDenunciaServiceTest: suspensión con efectivo) y una
+    verificación más en el reintegro por denuncia con efectivo.
+  - Backend completo sin las tres clases que levantan la aplicación
+    (JAVA_HOME=$HOME/.jdks/jdk-21.0.12+8 ./mvnw -B test -Dtest='!CatalogoPublicoTest,
+    !ActivehubApiApplicationTests,!BusquedaSinTildesTest', 31/10/2026): "Tests run: 1023,
+    Failures: 0, Errors: 0, Skipped: 2", "BUILD SUCCESS".
+  - NO se ejecutaron CatalogoPublicoTest, ActivehubApiApplicationTests ni
+    BusquedaSinTildesTest (20 pruebas): necesitan una base. Docker Desktop no arrancó, y no se
+    corrieron contra Supabase para no tocar la base compartida. En la corrida sin base dieron
+    "Tests run: 1043, Failures: 0, Errors: 20, Skipped: 2": los 20 errores son de esas clases.
+    Ninguna prueba el cambio de esta entrada.
+  - Frontend completo (npx vitest run --maxWorkers=1, 31/10/2026): "Test Files  49 passed
+    (49)" y "Tests  296 passed (296)". Antes: 295.
+
+ANÁLISIS ESTÁTICO: "10 problems (0 errors, 10 warnings)", sin cambios. npx tsc -b: sin
+  errores. npm run build: correcto.
+
+DESPLIEGUE Y CONFIGURACIÓN: sin cambios. Reiniciar el backend para los avisos y el manual del
+  asistente.
+
+DECISIONES: sólo se avisa la cancelación en efectivo; sin dato nuevo en la base.
+
+ERRORES DETECTADOS: el detalle de la clase del instructor afirmaba "No se cobró." en efectivo
+  sin poder saberlo. Corregido.
+
+CAPTURAS SUGERIDAS: "Mis pagos" con un pago en efectivo cancelado.
+
+PENDIENTE QUE QUEDA: correr las tres clases de prueba pendientes y probarlo en el navegador.
+
+--------------------------------------------------------------------------------
+DUDAS ABIERTAS
+--------------------------------------------------------------------------------
+1. Tope de la barra: se eligió 30 km. Confirmar con el usuario si prefiere otro valor.
+2. Código de historia y de pantalla de Explorar (E3A-HU / E3A-PAN): no verificados contra el
+   catálogo.
+3. ¿Se aplica la misma barra al filtro de precio? La referencia del usuario muestra un precio
+   ("De $ 9.000.000 hasta $ 36.000.000") y hoy "Precio máximo" de Explorar es una barra de una
+   sola manija. No se cambió: el pedido fue solo la distancia.
+4. Tarjeta de una actividad sin ninguna clase: muestra "Disponible" (disponibilidadDe en
+   Explorar trata la falta de próxima clase como disponible). Decidir si debe decir otra cosa,
+   por ejemplo "Sin clases programadas" (ENTRADA 003).
+5. Las fallas por tiempo agotado de npm test con el equipo cargado: si se repiten en CI,
+   evaluar subir el testTimeout o limitar los hilos de Vitest.
+6. Códigos propuestos como NUEVOS en la ENTRADA 004 (historia E3A-HU y pantalla E3A-PAN-14):
+   confirmar contra el catálogo del informe.
+7. Desborde horizontal de AlumnoNav en anchos de 800 px o menos (ENTRADA 004): decidir si se
+   corrige.
+8. Origen y licencia de public/home-hero.webp (ENTRADA 007), de public/explorar-hero.webp
+   (ENTRADA 009) y de public/login-fondo.webp (ENTRADA 015): las entregó el usuario; registrar de dónde salen y bajo qué licencia antes
+   de presentar el proyecto.
+9. La barra del buscador del Home no entra en el ancho de un celular (ENTRADA 007): RESUELTO
+   en la ENTRADA 008.
+10. Si la foto de Explorar se ve blanda en monitores grandes (ENTRADA 009), conseguir una
+    versión de unos 2000 px de ancho.
+
+================================================================================
+FIN DE LA BITÁCORA
+================================================================================
